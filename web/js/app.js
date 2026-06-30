@@ -130,10 +130,27 @@
 
     function updateStats(stats) {
         var el = function(id) { return document.getElementById(id); };
-        if (el('statChannels')) el('statChannels').textContent = formatNumber(stats.channels || 0);
-        if (el('statMovies')) el('statMovies').textContent = formatNumber(stats.movies || 0);
-        if (el('statSeries')) el('statSeries').textContent = formatNumber(stats.series || 0);
-        if (el('statEPG')) el('statEPG').textContent = formatNumber(stats.epgChannels || 0);
+        var ids = ['statChannels', 'statMovies', 'statSeries', 'statEPG'];
+        var values = [stats.channels || 0, stats.movies || 0, stats.series || 0, stats.epgChannels || 0];
+        
+        for (var i = 0; i < ids.length; i++) {
+            var element = el(ids[i]);
+            if (element) {
+                element.textContent = formatNumber(values[i]);
+                element.classList.remove('loading');
+            }
+        }
+    }
+
+    function setLoadingStats() {
+        var ids = ['statChannels', 'statMovies', 'statSeries', 'statEPG'];
+        for (var i = 0; i < ids.length; i++) {
+            var element = document.getElementById(ids[i]);
+            if (element) {
+                element.textContent = '...';
+                element.classList.add('loading');
+            }
+        }
     }
 
     function formatNumber(n) {
@@ -225,17 +242,7 @@
 
             updateProgress(100, 'Complete!');
 
-            // Fetch stats from backend
-            try {
-                const statsResp = await fetch('/api/info?token=' + encodeURIComponent(token));
-                if (statsResp.ok) {
-                    const stats = await statsResp.json();
-                    updateStats(stats);
-                }
-            } catch (e) {
-                console.warn('Failed to fetch stats:', e);
-            }
-
+            // Show result panel immediately
             setTimeout(function() {
                 var overlay = document.getElementById('progressOverlay');
                 var result = document.getElementById('resultPanel');
@@ -246,7 +253,21 @@
                 if (result) result.classList.remove('hidden');
                 if (manifestCodeBlock) manifestCodeBlock.textContent = manifestUrl;
                 if (stremioLink) stremioLink.href = stremioUrl;
+                
+                // Show loading state for stats
+                setLoadingStats();
             }, 500);
+
+            // Fetch stats asynchronously
+            try {
+                const statsResp = await fetch('/api/info?token=' + encodeURIComponent(token));
+                if (statsResp.ok) {
+                    const stats = await statsResp.json();
+                    updateStats(stats);
+                }
+            } catch (e) {
+                console.warn('Failed to fetch stats:', e);
+            }
 
         } catch (error) {
             console.error('Install error:', error);
