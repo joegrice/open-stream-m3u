@@ -10,12 +10,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/joe/open-stream-m3u/internal/addon"
 	"github.com/joe/open-stream-m3u/internal/config"
 	"github.com/joe/open-stream-m3u/internal/crypto"
+	"github.com/joe/open-stream-m3u/internal/parser"
 	"github.com/joe/open-stream-m3u/internal/provider"
 )
 
@@ -53,6 +55,7 @@ func (s *Server) setupRoutes() {
 	})
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("POST /api/prefetch", s.handlePrefetch)
+	s.mux.HandleFunc("POST /api/groups", s.handleGroups)
 	s.mux.HandleFunc("POST /api/encrypt", s.handleEncrypt)
 	s.mux.HandleFunc("GET /api/info", s.handleInfo)
 	s.mux.HandleFunc("GET /api/debug", s.handleDebug)
@@ -132,6 +135,65 @@ func (s *Server) handlePrefetch(w http.ResponseWriter, r *http.Request) {
 		"bytes":   len(body),
 		"content": string(body),
 	})
+}
+
+func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
+	var cfg map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	prov, err := s.createProvider(cfg)
+	if err != nil {
+		http.Error(w, "Invalid provider config", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	channels, _ := prov.FetchChannels(ctx)
+	movies, _ := prov.FetchMovies(ctx)
+	series, _ := prov.FetchSeries(ctx)
+
+	all := make([]parser.MediaItem, 0, len(channels)+len(movies)+len(series))
+	all = append(all, channels...)
+	all = append(all, movies...)
+	all = append(all, series...)
+
+	type groupInfo struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+		Type  string `json:"type"`
+	}
+
+	groupMap := make(map[string]*groupInfo)
+	for _, item := range all {
+		if item.Group == "" {
+			continue
+		}
+		g, ok := groupMap[item.Group]
+		if !ok {
+			g = &groupInfo{Name: item.Group, Type: string(item.Type)}
+			groupMap[item.Group] = g
+		}
+		g.Count++
+	}
+
+	groups := make([]groupInfo, 0, len(groupMap))
+	for _, g := range groupMap {
+		groups = append(groups, *g)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].Count != groups[j].Count {
+			return groups[i].Count > groups[j].Count
+		}
+		return groups[i].Name < groups[j].Name
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(groups)
 }
 
 func (s *Server) handleEncrypt(w http.ResponseWriter, r *http.Request) {

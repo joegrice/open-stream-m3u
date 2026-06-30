@@ -13,11 +13,13 @@ import (
 )
 
 type XtreamProvider struct {
-	baseURL  string
-	username string
-	password string
-	useM3U   bool
-	client   *http.Client
+	baseURL    string
+	username   string
+	password   string
+	useM3U     bool
+	client     *http.Client
+	catNames   map[string]string
+	catLoaded  bool
 }
 
 func NewXtreamProvider(baseURL, username, password string, useM3U bool) *XtreamProvider {
@@ -39,6 +41,49 @@ func (p *XtreamProvider) apiURL(action string) string {
 		url.QueryEscape(p.password),
 		action,
 	)
+}
+
+func (p *XtreamProvider) loadCategories(ctx context.Context) {
+	if p.catLoaded {
+		return
+	}
+	p.catLoaded = true
+	p.catNames = make(map[string]string)
+
+	for _, action := range []string{"get_live_categories", "get_vod_categories", "get_series_categories"} {
+		req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL(action), nil)
+		if err != nil {
+			continue
+		}
+		resp, err := p.client.Do(req)
+		if err != nil {
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		var cats []struct {
+			CategoryID   string `json:"category_id"`
+			CategoryName string `json:"category_name"`
+		}
+		if err := json.Unmarshal(body, &cats); err != nil {
+			continue
+		}
+		for _, c := range cats {
+			if c.CategoryID != "" {
+				p.catNames[c.CategoryID] = c.CategoryName
+			}
+		}
+	}
+}
+
+func (p *XtreamProvider) resolveCategory(catID string) string {
+	if name, ok := p.catNames[catID]; ok {
+		return name
+	}
+	return catID
 }
 
 func (p *XtreamProvider) FetchChannels(ctx context.Context) ([]parser.MediaItem, error) {
@@ -153,6 +198,8 @@ func (p *XtreamProvider) FetchEPG(ctx context.Context) (map[string][]parser.Prog
 }
 
 func (p *XtreamProvider) fetchChannelsFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	p.loadCategories(ctx)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_live_streams"), nil)
 	if err != nil {
 		return nil, err
@@ -197,11 +244,11 @@ func (p *XtreamProvider) fetchChannelsFromAPI(ctx context.Context) ([]parser.Med
 			Type:  parser.TypeTV,
 			Logo:  s.StreamIcon,
 			EPGID: s.EPGChannelID,
-			Group: s.CategoryID,
+			Group: p.resolveCategory(s.CategoryID),
 			Attrs: map[string]string{
 				"tvg-logo":   s.StreamIcon,
 				"tvg-id":     s.EPGChannelID,
-				"group-title": s.CategoryID,
+				"group-title": p.resolveCategory(s.CategoryID),
 			},
 		})
 	}
@@ -210,6 +257,8 @@ func (p *XtreamProvider) fetchChannelsFromAPI(ctx context.Context) ([]parser.Med
 }
 
 func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	p.loadCategories(ctx)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_vod_streams"), nil)
 	if err != nil {
 		return nil, err
@@ -270,11 +319,11 @@ func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.Media
 			URL:   streamURL,
 			Type:  parser.TypeMovie,
 			Logo:  s.StreamIcon,
-			Group: s.CategoryID,
+			Group: p.resolveCategory(s.CategoryID),
 			Plot:  s.Plot,
 			Attrs: map[string]string{
 				"tvg-logo":    s.StreamIcon,
-				"group-title": s.CategoryID,
+				"group-title": p.resolveCategory(s.CategoryID),
 				"plot":        s.Plot,
 			},
 		})
@@ -291,6 +340,8 @@ func min(a, b int) int {
 }
 
 func (p *XtreamProvider) fetchSeriesFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	p.loadCategories(ctx)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_series"), nil)
 	if err != nil {
 		return nil, err
@@ -326,11 +377,11 @@ func (p *XtreamProvider) fetchSeriesFromAPI(ctx context.Context) ([]parser.Media
 			Name:  s.Name,
 			Type:  parser.TypeSeries,
 			Logo:  s.Cover,
-			Group: s.CategoryID,
+			Group: p.resolveCategory(s.CategoryID),
 			Plot:  s.Plot,
 			Attrs: map[string]string{
 				"tvg-logo":    s.Cover,
-				"group-title": s.CategoryID,
+				"group-title": p.resolveCategory(s.CategoryID),
 				"plot":        s.Plot,
 			},
 		})

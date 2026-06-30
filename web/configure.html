@@ -87,7 +87,21 @@
                 </div>
 
                 <div class="form-actions">
+                    <button type="button" id="loadGroupsBtn" class="btn secondary">Load Categories</button>
                     <button type="submit" class="btn primary">Install Addon</button>
+                </div>
+
+                <div id="groupSelector" class="group-selector hidden">
+                    <div class="group-selector-header">
+                        <h3>Select Categories <span id="selectedCount" class="selected-count"></span></h3>
+                        <div class="group-actions">
+                            <button type="button" id="selectAllBtn" class="btn-link">Select All</button>
+                            <button type="button" id="deselectAllBtn" class="btn-link">Deselect All</button>
+                        </div>
+                    </div>
+                    <input type="text" id="groupSearch" class="group-search" placeholder="Search categories...">
+                    <div id="groupList" class="group-list"></div>
+                    <p class="group-hint">Selected categories will appear as separate rows in Nuvio. Leave empty for default view.</p>
                 </div>
             </form>
 

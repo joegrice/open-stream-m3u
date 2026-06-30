@@ -15,28 +15,58 @@ import (
 )
 
 type Instance struct {
-	mu         sync.RWMutex
-	config     map[string]any
-	provider   provider.Provider
-	channels   []parser.MediaItem
-	movies     []parser.MediaItem
-	series     []parser.MediaItem
-	episodes   map[string][]parser.Episode
-	epgData    map[string][]parser.Programme
-	lastUpdate time.Time
-	manifest   *Manifest
-	logger     *slog.Logger
+	mu             sync.RWMutex
+	config         map[string]any
+	provider       provider.Provider
+	channels       []parser.MediaItem
+	movies         []parser.MediaItem
+	series         []parser.MediaItem
+	episodes       map[string][]parser.Episode
+	epgData        map[string][]parser.Programme
+	lastUpdate     time.Time
+	manifest       *Manifest
+	groupCatalogs  map[string]string // catalog ID -> group name
+	logger         *slog.Logger
 }
 
 func NewInstance(config map[string]any, prov provider.Provider, logger *slog.Logger) *Instance {
-	return &Instance{
-		config:   config,
-		provider: prov,
-		episodes: make(map[string][]parser.Episode),
-		epgData:  make(map[string][]parser.Programme),
-		manifest: BuildManifest(),
-		logger:   logger,
+	selectedGroups := extractSelectedGroups(config)
+	manifest := BuildManifest(selectedGroups)
+
+	groupCatalogs := make(map[string]string)
+	for _, g := range selectedGroups {
+		groupCatalogs[groupCatalogID(g)] = g
 	}
+
+	return &Instance{
+		config:        config,
+		provider:      prov,
+		episodes:      make(map[string][]parser.Episode),
+		epgData:       make(map[string][]parser.Programme),
+		manifest:      manifest,
+		groupCatalogs: groupCatalogs,
+		logger:        logger,
+	}
+}
+
+func extractSelectedGroups(config map[string]any) []string {
+	raw, ok := config["selectedGroups"]
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return v
+	case []any:
+		groups := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				groups = append(groups, s)
+			}
+		}
+		return groups
+	}
+	return nil
 }
 
 func (i *Instance) Initialize(ctx context.Context) error {
@@ -78,7 +108,9 @@ func (i *Instance) refresh(ctx context.Context) error {
 	i.lastUpdate = time.Now()
 	i.mu.Unlock()
 
-	i.updateManifestGenres()
+	if len(i.groupCatalogs) == 0 {
+		i.updateManifestGenres()
+	}
 	i.logger.Info("Addon data refreshed",
 		"channels", len(channels),
 		"movies", len(movies),
@@ -140,15 +172,24 @@ func (i *Instance) GetCatalog(catalogType, catalogID string, extra map[string]st
 	defer i.mu.RUnlock()
 
 	var items []parser.MediaItem
-	switch catalogID {
-	case "iptv_channels":
-		items = i.channels
-	case "iptv_movies":
-		items = i.movies
-	case "iptv_series":
-		items = i.series
-	default:
-		return nil
+
+	if groupName, ok := i.groupCatalogs[catalogID]; ok {
+		all := make([]parser.MediaItem, 0, len(i.channels)+len(i.movies)+len(i.series))
+		all = append(all, i.channels...)
+		all = append(all, i.movies...)
+		all = append(all, i.series...)
+		items = filterByGenre(all, groupName)
+	} else {
+		switch catalogID {
+		case "iptv_channels":
+			items = i.channels
+		case "iptv_movies":
+			items = i.movies
+		case "iptv_series":
+			items = i.series
+		default:
+			return nil
+		}
 	}
 
 	filtered := i.filterItems(items, extra)

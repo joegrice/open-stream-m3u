@@ -2,6 +2,7 @@
     'use strict';
 
     const THEME_KEY = 'open-stream-theme';
+    var groupsData = [];
 
     function initTheme() {
         const saved = localStorage.getItem(THEME_KEY);
@@ -61,7 +62,138 @@
         if (copyBtn) {
             copyBtn.addEventListener('click', copyManifestUrl);
         }
+
+        var loadGroupsBtn = document.getElementById('loadGroupsBtn');
+        if (loadGroupsBtn) {
+            loadGroupsBtn.addEventListener('click', handleLoadGroups);
+        }
+
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', function() { toggleAllGroups(true); });
+        }
+
+        var deselectAllBtn = document.getElementById('deselectAllBtn');
+        if (deselectAllBtn) {
+            deselectAllBtn.addEventListener('click', function() { toggleAllGroups(false); });
+        }
+
+        var groupSearch = document.getElementById('groupSearch');
+        if (groupSearch) {
+            groupSearch.addEventListener('input', filterGroups);
+        }
     });
+
+    async function handleLoadGroups() {
+        var activeTab = document.querySelector('.tab.active');
+        var mode = activeTab ? activeTab.getAttribute('data-tab') : 'direct';
+
+        var config = {};
+        if (mode === 'direct') {
+            var m3uUrl = document.getElementById('m3uUrl').value.trim();
+            if (!m3uUrl) { alert('Please enter an M3U URL first'); return; }
+            config = {
+                provider: 'direct',
+                m3uUrl: m3uUrl,
+                enableEpg: document.getElementById('enableEpg').checked,
+                epgUrl: document.getElementById('epgUrl').value.trim(),
+                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0
+            };
+        } else {
+            var xtreamUrl = document.getElementById('xtreamUrl').value.trim();
+            var xtreamUsername = document.getElementById('xtreamUsername').value.trim();
+            var xtreamPassword = document.getElementById('xtreamPassword').value.trim();
+            if (!xtreamUrl || !xtreamUsername || !xtreamPassword) { alert('Please fill in all Xtream fields first'); return; }
+            config = {
+                provider: 'xtream',
+                xtreamUrl: xtreamUrl,
+                xtreamUsername: xtreamUsername,
+                xtreamPassword: xtreamPassword,
+                xtreamUseM3U: document.getElementById('xtreamUseM3U').checked,
+                enableEpg: document.getElementById('xtreamEnableEpg').checked
+            };
+        }
+
+        var btn = document.getElementById('loadGroupsBtn');
+        btn.textContent = 'Loading...';
+        btn.disabled = true;
+
+        try {
+            var resp = await fetch('/api/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            if (!resp.ok) throw new Error('Failed to load categories');
+            groupsData = await resp.json();
+            renderGroups(groupsData);
+            document.getElementById('groupSelector').classList.remove('hidden');
+        } catch (e) {
+            alert('Failed to load categories: ' + e.message);
+        } finally {
+            btn.textContent = 'Load Categories';
+            btn.disabled = false;
+        }
+    }
+
+    function renderGroups(groups) {
+        var list = document.getElementById('groupList');
+        if (!list) return;
+        list.innerHTML = '';
+        groups.forEach(function(g) {
+            var label = document.createElement('label');
+            label.className = 'group-item';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = g.name;
+            cb.className = 'group-checkbox';
+            cb.addEventListener('change', updateSelectedCount);
+            var span = document.createElement('span');
+            span.className = 'group-name';
+            span.textContent = g.name;
+            var count = document.createElement('span');
+            count.className = 'group-count';
+            count.textContent = formatNumber(g.count);
+            label.appendChild(cb);
+            label.appendChild(span);
+            label.appendChild(count);
+            list.appendChild(label);
+        });
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        var el = document.getElementById('selectedCount');
+        if (!el) return;
+        var n = document.querySelectorAll('.group-checkbox:checked').length;
+        el.textContent = n > 0 ? '(' + n + ' selected)' : '';
+    }
+
+    function filterGroups() {
+        var query = document.getElementById('groupSearch').value.toLowerCase();
+        var items = document.querySelectorAll('.group-item');
+        items.forEach(function(item) {
+            var name = item.querySelector('.group-name').textContent.toLowerCase();
+            item.style.display = name.indexOf(query) !== -1 ? '' : 'none';
+        });
+    }
+
+    function toggleAllGroups(checked) {
+        var items = document.querySelectorAll('.group-item');
+        items.forEach(function(item) {
+            if (item.style.display !== 'none') {
+                item.querySelector('.group-checkbox').checked = checked;
+            }
+        });
+    }
+
+    function getSelectedGroups() {
+        var selected = [];
+        document.querySelectorAll('.group-checkbox:checked').forEach(function(cb) {
+            selected.push(cb.value);
+        });
+        return selected;
+    }
 
     async function handleInstall(e) {
         e.preventDefault();
@@ -86,7 +218,8 @@
                 m3uUrl: m3uUrl,
                 enableEpg: document.getElementById('enableEpg').checked,
                 epgUrl: document.getElementById('epgUrl').value.trim(),
-                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0
+                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0,
+                selectedGroups: getSelectedGroups()
             };
         } else {
             var xtreamUrl = document.getElementById('xtreamUrl').value.trim();
@@ -104,7 +237,8 @@
                 xtreamUsername: xtreamUsername,
                 xtreamPassword: xtreamPassword,
                 xtreamUseM3U: document.getElementById('xtreamUseM3U').checked,
-                enableEpg: document.getElementById('xtreamEnableEpg').checked
+                enableEpg: document.getElementById('xtreamEnableEpg').checked,
+                selectedGroups: getSelectedGroups()
             };
         }
 
@@ -229,7 +363,9 @@
 
             // Encode config to base64url
             const jsonStr = JSON.stringify(config);
-            const token = btoa(jsonStr)
+            const token = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, function(m, p) {
+                return String.fromCharCode('0x' + p);
+            }))
                 .replace(/\+/g, '-')
                 .replace(/\//g, '_')
                 .replace(/=+$/, '');

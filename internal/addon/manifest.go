@@ -1,5 +1,11 @@
 package addon
 
+import (
+	"crypto/md5"
+	"fmt"
+	"strings"
+)
+
 type Manifest struct {
 	ID            string      `json:"id"`
 	Version       string      `json:"version"`
@@ -85,8 +91,8 @@ type StreamResponse struct {
 	Streams []Stream `json:"streams"`
 }
 
-func BuildManifest() *Manifest {
-	return &Manifest{
+func BuildManifest(selectedGroups []string) *Manifest {
+	m := &Manifest{
 		ID:          "org.openstream.m3u",
 		Version:     "1.0.0",
 		Name:        "Open Stream M3U",
@@ -94,7 +100,26 @@ func BuildManifest() *Manifest {
 		Resources:   []string{"catalog", "stream", "meta"},
 		Types:       []string{"tv", "movie", "series"},
 		IDPrefixes:  []string{"iptv_"},
-		Catalogs: []Catalog{
+		BehaviorHints: map[string]any{
+			"configurable":        true,
+			"configurationRequired": false,
+		},
+	}
+
+	if len(selectedGroups) > 0 {
+		for _, g := range selectedGroups {
+			m.Catalogs = append(m.Catalogs, Catalog{
+				Type: "tv",
+				ID:   groupCatalogID(g),
+				Name: g,
+				Extra: []CatalogExtra{
+					{Name: "search"},
+					{Name: "skip"},
+				},
+			})
+		}
+	} else {
+		m.Catalogs = []Catalog{
 			{
 				Type: "tv",
 				ID:   "iptv_channels",
@@ -125,10 +150,17 @@ func BuildManifest() *Manifest {
 					{Name: "skip"},
 				},
 			},
-		},
-		BehaviorHints: map[string]any{
-			"configurable":        true,
-			"configurationRequired": false,
-		},
+		}
 	}
+
+	return m
+}
+
+func groupCatalogID(group string) string {
+	h := md5.Sum([]byte(group))
+	return fmt.Sprintf("iptv_group_%x", h[:8])
+}
+
+func IsGroupCatalog(id string) bool {
+	return strings.HasPrefix(id, "iptv_group_")
 }
