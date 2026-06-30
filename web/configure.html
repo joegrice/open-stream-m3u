@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configure - Open Stream M3U</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Configure Addon</h1>
+            <a href="/" class="back-link">&larr; Back</a>
+            <button id="themeToggle" class="icon-btn" aria-label="Toggle theme">
+                <svg class="theme-icon light-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <svg class="theme-icon dark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+        </header>
+
+        <main>
+            <div class="tabs">
+                <button class="tab active" data-tab="direct">Direct M3U</button>
+                <button class="tab" data-tab="xtream">Xtream Codes</button>
+            </div>
+
+            <form id="configForm" class="config-form" autocomplete="off">
+                <div id="directTab" class="tab-content active">
+                    <div class="form-group">
+                        <label for="m3uUrl">M3U Playlist URL *</label>
+                        <input type="url" id="m3uUrl" name="m3uUrl" placeholder="https://example.com/playlist.m3u">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="enableEpg" name="enableEpg" checked>
+                            <span>Enable EPG (TV Guide)</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="epgUrl">EPG XML URL (optional)</label>
+                        <input type="url" id="epgUrl" name="epgUrl" placeholder="https://example.com/guide.xml">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="epgOffset">EPG Offset (hours)</label>
+                        <input type="number" id="epgOffset" name="epgOffset" step="0.25" value="0" min="-12" max="12">
+                    </div>
+                </div>
+
+                <div id="xtreamTab" class="tab-content">
+                    <div class="form-group">
+                        <label for="xtreamUrl">Panel URL *</label>
+                        <input type="url" id="xtreamUrl" name="xtreamUrl" placeholder="http://panel.example.com:8080">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="xtreamUsername">Username *</label>
+                        <input type="text" id="xtreamUsername" name="xtreamUsername" placeholder="username" autocomplete="off" data-lpignore="true">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="xtreamPassword">Password *</label>
+                        <div class="password-wrapper">
+                            <input type="text" id="xtreamPassword" name="xtreamPassword" placeholder="password" autocomplete="off" data-lpignore="true">
+                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility()">Show</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="xtreamUseM3U" name="xtreamUseM3U">
+                            <span>Use M3U+ output instead of JSON API</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="xtreamEnableEpg" name="xtreamEnableEpg" checked>
+                            <span>Enable EPG from panel</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn primary">Install Addon</button>
+                </div>
+            </form>
+
+            <div id="progressOverlay" class="overlay hidden">
+                <div class="overlay-content">
+                    <h2>Installing...</h2>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p id="progressText">Fetching playlist...</p>
+                </div>
+            </div>
+
+            <div id="resultPanel" class="result-panel hidden">
+                <h2>Installation Complete</h2>
+
+                <div id="statsBox" class="stats-box">
+                    <div class="stat-item">
+                        <span class="stat-value" id="statChannels">-</span>
+                        <span class="stat-label">Channels</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statMovies">-</span>
+                        <span class="stat-label">Movies</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statSeries">-</span>
+                        <span class="stat-label">Series</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statEPG">-</span>
+                        <span class="stat-label">EPG Channels</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Your Manifest URL</label>
+                    <div class="code-block" id="manifestCodeBlock"></div>
+                </div>
+
+                <div class="form-group">
+                    <button id="copyBtn" class="btn secondary">Copy Manifest URL</button>
+                </div>
+
+                <a id="stremioLink" class="btn primary" href="#">Open in Stremio</a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Open Stream M3U &mdash; Self-hosted IPTV for Stremio</p>
+        </footer>
+    </div>
+
+    <script>
+        function togglePasswordVisibility() {
+            var input = document.getElementById('xtreamPassword');
+            var btn = document.querySelector('.password-toggle');
+            if (input.type === 'text') {
+                input.type = 'password';
+                btn.textContent = 'Show';
+            } else {
+                input.type = 'text';
+                btn.textContent = 'Hide';
+            }
+        }
+    </script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

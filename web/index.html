@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Stream M3U</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Open Stream M3U</h1>
+            <p>IPTV addon for Stremio</p>
+            <button id="themeToggle" class="icon-btn" aria-label="Toggle theme">
+                <svg class="theme-icon light-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <svg class="theme-icon dark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+        </header>
+
+        <main>
+            <div class="card-grid">
+                <div class="card">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4h16v16H4z"/><path d="M4 4l8 8 8-8"/>
+                        </svg>
+                    </div>
+                    <h2>Direct M3U / EPG</h2>
+                    <p>Provide a direct M3U playlist URL and optional XMLTV guide.</p>
+                    <a href="/configure?mode=direct" class="btn primary">Configure</a>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+                        </svg>
+                    </div>
+                    <h2>Xtream Codes API</h2>
+                    <p>Use Xtream panel credentials with JSON API or M3U output.</p>
+                    <a href="/configure?mode=xtream" class="btn primary">Configure</a>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>Features</h3>
+                <ul>
+                    <li>Live TV channels with EPG support</li>
+                    <li>Movies and VOD catalogs</li>
+                    <li>Series with episode tracking</li>
+                    <li>Encrypted configuration tokens</li>
+                    <li>Fast in-memory caching</li>
+                </ul>
+            </div>
+        </main>
+
+        <footer>
+            <p>Open Stream M3U &mdash; Self-hosted IPTV for Stremio</p>
+        </footer>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,410 @@
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/joe/open-stream-m3u/internal/parser"
+)
+
+type XtreamProvider struct {
+	baseURL  string
+	username string
+	password string
+	useM3U   bool
+	client   *http.Client
+}
+
+func NewXtreamProvider(baseURL, username, password string, useM3U bool) *XtreamProvider {
+	return &XtreamProvider{
+		baseURL:  baseURL,
+		username: username,
+		password: password,
+		useM3U:   useM3U,
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+func (p *XtreamProvider) apiURL(action string) string {
+	return fmt.Sprintf("%s/player_api.php?username=%s&password=%s&action=%s",
+		p.baseURL,
+		url.QueryEscape(p.username),
+		url.QueryEscape(p.password),
+		action,
+	)
+}
+
+func (p *XtreamProvider) FetchChannels(ctx context.Context) ([]parser.MediaItem, error) {
+	if p.useM3U {
+		return p.fetchChannelsFromM3U(ctx)
+	}
+	return p.fetchChannelsFromAPI(ctx)
+}
+
+func (p *XtreamProvider) FetchMovies(ctx context.Context) ([]parser.MediaItem, error) {
+	if p.useM3U {
+		return p.fetchMoviesFromM3U(ctx)
+	}
+	return p.fetchMoviesFromAPI(ctx)
+}
+
+func (p *XtreamProvider) FetchSeries(ctx context.Context) ([]parser.MediaItem, error) {
+	if p.useM3U {
+		return p.fetchSeriesFromM3U(ctx)
+	}
+	return p.fetchSeriesFromAPI(ctx)
+}
+
+func (p *XtreamProvider) FetchSeriesInfo(ctx context.Context, seriesID string) ([]parser.Episode, error) {
+	if p.useM3U {
+		return nil, nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_series_info")+"&series_id="+url.QueryEscape(seriesID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var info struct {
+		Episodes map[string][]struct {
+			ID                int    `json:"id"`
+			Title             string `json:"title"`
+			Season            int    `json:"season"`
+			EpisodeNum        int    `json:"episode_num"`
+			ContainerExtension string `json:"container_extension"`
+			Info              struct {
+				MovieImage string `json:"movie_image"`
+			} `json:"info"`
+		} `json:"episodes"`
+	}
+
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, err
+	}
+
+	var episodes []parser.Episode
+	for seasonKey, eps := range info.Episodes {
+		for _, ep := range eps {
+			epURL := fmt.Sprintf("%s/series/%s/%s/%d.%s",
+				p.baseURL,
+				url.QueryEscape(p.username),
+				url.QueryEscape(p.password),
+				ep.ID,
+				ep.ContainerExtension,
+			)
+
+			episodes = append(episodes, parser.Episode{
+				ID:        fmt.Sprintf("iptv_series_ep_%d", ep.ID),
+				Title:     ep.Title,
+				Season:    ep.Season,
+				Episode:   ep.EpisodeNum,
+				URL:       epURL,
+				Thumbnail: ep.Info.MovieImage,
+			})
+		}
+		_ = seasonKey
+	}
+
+	return episodes, nil
+}
+
+func (p *XtreamProvider) FetchEPG(ctx context.Context) (map[string][]parser.Programme, error) {
+	epgURL := fmt.Sprintf("%s/xmltv.php?username=%s&password=%s",
+		p.baseURL,
+		url.QueryEscape(p.username),
+		url.QueryEscape(p.password),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", epgURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return parser.ParseXMLTV(string(body))
+}
+
+func (p *XtreamProvider) fetchChannelsFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_live_streams"), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var streams []struct {
+		StreamID     int    `json:"stream_id"`
+		Name         string `json:"name"`
+		StreamIcon   string `json:"stream_icon"`
+		EPGChannelID string `json:"epg_channel_id"`
+		CategoryID   string `json:"category_id"`
+	}
+
+	if err := json.Unmarshal(body, &streams); err != nil {
+		return nil, err
+	}
+
+	var channels []parser.MediaItem
+	for _, s := range streams {
+		streamURL := fmt.Sprintf("%s/live/%s/%s/%d.m3u8",
+			p.baseURL,
+			url.QueryEscape(p.username),
+			url.QueryEscape(p.password),
+			s.StreamID,
+		)
+
+		channels = append(channels, parser.MediaItem{
+			ID:    fmt.Sprintf("iptv_live_%d", s.StreamID),
+			Name:  s.Name,
+			URL:   streamURL,
+			Type:  parser.TypeTV,
+			Logo:  s.StreamIcon,
+			EPGID: s.EPGChannelID,
+			Group: s.CategoryID,
+			Attrs: map[string]string{
+				"tvg-logo":   s.StreamIcon,
+				"tvg-id":     s.EPGChannelID,
+				"group-title": s.CategoryID,
+			},
+		})
+	}
+
+	return channels, nil
+}
+
+func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_vod_streams"), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("[DEBUG] VOD API response: %d bytes, status: %d\n", len(body), resp.StatusCode)
+
+	// Check if response is an error message
+	var errorResp struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error != "" {
+		return nil, fmt.Errorf("API error: %s", errorResp.Error)
+	}
+
+	// Try to parse as array
+	var streams []struct {
+		StreamID          int    `json:"stream_id"`
+		Name              string `json:"name"`
+		StreamIcon        string `json:"stream_icon"`
+		Plot              string `json:"plot"`
+		CategoryID        string `json:"category_id"`
+		ContainerExtension string `json:"container_extension"`
+	}
+
+	if err := json.Unmarshal(body, &streams); err != nil {
+		fmt.Printf("[DEBUG] VOD JSON parse error: %v\n", err)
+		fmt.Printf("[DEBUG] First 500 bytes: %s\n", string(body[:min(500, len(body))]))
+		return nil, fmt.Errorf("failed to parse VOD response: %w", err)
+	}
+
+	fmt.Printf("[DEBUG] VOD streams parsed: %d\n", len(streams))
+
+	var movies []parser.MediaItem
+	for _, s := range streams {
+		streamURL := fmt.Sprintf("%s/movie/%s/%s/%d.%s",
+			p.baseURL,
+			url.QueryEscape(p.username),
+			url.QueryEscape(p.password),
+			s.StreamID,
+			s.ContainerExtension,
+		)
+
+		movies = append(movies, parser.MediaItem{
+			ID:    fmt.Sprintf("iptv_vod_%d", s.StreamID),
+			Name:  s.Name,
+			URL:   streamURL,
+			Type:  parser.TypeMovie,
+			Logo:  s.StreamIcon,
+			Group: s.CategoryID,
+			Plot:  s.Plot,
+			Attrs: map[string]string{
+				"tvg-logo":    s.StreamIcon,
+				"group-title": s.CategoryID,
+				"plot":        s.Plot,
+			},
+		})
+	}
+
+	return movies, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (p *XtreamProvider) fetchSeriesFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL("get_series"), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var series []struct {
+		SeriesID   int    `json:"series_id"`
+		Name       string `json:"name"`
+		Cover      string `json:"cover"`
+		Plot       string `json:"plot"`
+		CategoryID string `json:"category_id"`
+	}
+
+	if err := json.Unmarshal(body, &series); err != nil {
+		return nil, err
+	}
+
+	var result []parser.MediaItem
+	for _, s := range series {
+		result = append(result, parser.MediaItem{
+			ID:    fmt.Sprintf("iptv_series_%d", s.SeriesID),
+			Name:  s.Name,
+			Type:  parser.TypeSeries,
+			Logo:  s.Cover,
+			Group: s.CategoryID,
+			Plot:  s.Plot,
+			Attrs: map[string]string{
+				"tvg-logo":    s.Cover,
+				"group-title": s.CategoryID,
+				"plot":        s.Plot,
+			},
+		})
+	}
+
+	return result, nil
+}
+
+func (p *XtreamProvider) fetchChannelsFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
+	items, err := p.fetchM3U(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var channels []parser.MediaItem
+	for _, item := range items {
+		if item.Type == parser.TypeTV {
+			channels = append(channels, item)
+		}
+	}
+	return channels, nil
+}
+
+func (p *XtreamProvider) fetchMoviesFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
+	items, err := p.fetchM3U(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var movies []parser.MediaItem
+	for _, item := range items {
+		if item.Type == parser.TypeMovie {
+			movies = append(movies, item)
+		}
+	}
+	return movies, nil
+}
+
+func (p *XtreamProvider) fetchSeriesFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
+	items, err := p.fetchM3U(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, seriesMap := parser.GroupSeries(items)
+	var series []parser.MediaItem
+	for _, s := range seriesMap {
+		series = append(series, *s)
+	}
+	return series, nil
+}
+
+func (p *XtreamProvider) fetchM3U(ctx context.Context) ([]parser.MediaItem, error) {
+	m3uURL := fmt.Sprintf("%s/get.php?username=%s&password=%s&type=m3u_plus",
+		p.baseURL,
+		url.QueryEscape(p.username),
+		url.QueryEscape(p.password),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", m3uURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return parser.ParseM3U(string(body))
+}
