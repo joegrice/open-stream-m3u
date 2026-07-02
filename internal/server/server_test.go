@@ -60,7 +60,7 @@ func TestTokenRoutes(t *testing.T) {
 		wantMetas int
 	}{
 		{"/manifest.json", http.StatusOK, 0},
-		{"/catalog/tv/iptv_channels.json", http.StatusOK, 1},
+		{"/catalog/channel/iptv_channels.json", http.StatusOK, 1},
 		{"/stream/tv/iptv_test.json", http.StatusOK, 0},
 		{"/meta/tv/iptv_test.json", http.StatusOK, 0},
 	}

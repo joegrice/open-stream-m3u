@@ -98,7 +98,7 @@ func BuildManifest(selectedGroups []string) *Manifest {
 		Name:        "Open Stream M3U",
 		Description: "IPTV addon for M3U playlists and EPG data",
 		Resources:   []string{"catalog", "stream", "meta"},
-		Types:       []string{"tv", "movie", "series"},
+		Types:       []string{"tv", "movie", "series", "channel"},
 		IDPrefixes:  []string{"iptv_"},
 		BehaviorHints: map[string]any{
 			"configurable":        true,
@@ -109,7 +109,7 @@ func BuildManifest(selectedGroups []string) *Manifest {
 	if len(selectedGroups) > 0 {
 		for _, g := range selectedGroups {
 			m.Catalogs = append(m.Catalogs, Catalog{
-				Type: "tv",
+				Type: "channel",
 				ID:   groupCatalogID(g),
 				Name: g,
 				Extra: []CatalogExtra{
@@ -121,7 +121,7 @@ func BuildManifest(selectedGroups []string) *Manifest {
 	} else {
 		m.Catalogs = []Catalog{
 			{
-				Type: "tv",
+				Type: "channel",
 				ID:   "iptv_channels",
 				Name: "IPTV Channels",
 				Extra: []CatalogExtra{
