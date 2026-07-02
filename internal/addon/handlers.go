@@ -18,7 +18,7 @@ func HandleCatalog(instance *Instance) http.HandlerFunc {
 		}
 
 		catalogType := parts[1]
-		catalogID := parts[2]
+		catalogID := strings.TrimSuffix(parts[2], ".json")
 
 		extra := make(map[string]string)
 		if len(parts) > 3 {

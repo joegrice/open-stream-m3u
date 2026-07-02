@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/joe/open-stream-m3u/internal/addon"
 	"github.com/joe/open-stream-m3u/internal/config"
@@ -33,7 +35,7 @@ func (staticProvider) FetchEPG(context.Context) (map[string][]parser.Programme, 
 }
 
 func TestTokenRoutes(t *testing.T) {
-	cfg := &config.Config{Port: 7001}
+	cfg := &config.Config{Port: 7001, CacheTTL: time.Hour, MaxCacheEntries: 10}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := New(cfg, logger, fstest.MapFS{})
 
@@ -48,15 +50,19 @@ func TestTokenRoutes(t *testing.T) {
 		t.Fatalf("initialize instance: %v", err)
 	}
 	s.cache.Set(token, instance)
+	if _, ok := s.cache.Get(token); !ok {
+		t.Fatalf("instance not in cache before request")
+	}
 
 	tests := []struct {
-		suffix string
-		want   int
+		suffix    string
+		want      int
+		wantMetas int
 	}{
-		{"/manifest.json", http.StatusOK},
-		{"/catalog/tv/iptv_channels.json", http.StatusOK},
-		{"/stream/tv/iptv_test.json", http.StatusOK},
-		{"/meta/tv/iptv_test.json", http.StatusOK},
+		{"/manifest.json", http.StatusOK, 0},
+		{"/catalog/tv/iptv_channels.json", http.StatusOK, 1},
+		{"/stream/tv/iptv_test.json", http.StatusOK, 0},
+		{"/meta/tv/iptv_test.json", http.StatusOK, 0},
 	}
 
 	for _, tt := range tests {
@@ -66,6 +72,17 @@ func TestTokenRoutes(t *testing.T) {
 			s.mux.ServeHTTP(rec, req)
 			if rec.Code != tt.want {
 				t.Errorf("%s: got status %d, want %d", tt.suffix, rec.Code, tt.want)
+			}
+			if tt.wantMetas > 0 {
+				var resp struct {
+					Metas []json.RawMessage `json:"metas"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("%s: decode response: %v", tt.suffix, err)
+				}
+				if len(resp.Metas) != tt.wantMetas {
+					t.Errorf("%s: got %d metas, want %d", tt.suffix, len(resp.Metas), tt.wantMetas)
+				}
 			}
 		})
 	}
