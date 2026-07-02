@@ -15,18 +15,18 @@ import (
 )
 
 type Instance struct {
-	mu             sync.RWMutex
-	config         map[string]any
-	provider       provider.Provider
-	channels       []parser.MediaItem
-	movies         []parser.MediaItem
-	series         []parser.MediaItem
-	episodes       map[string][]parser.Episode
-	epgData        map[string][]parser.Programme
-	lastUpdate     time.Time
-	manifest       *Manifest
-	groupCatalogs  map[string]string // catalog ID -> group name
-	logger         *slog.Logger
+	mu            sync.RWMutex
+	config        map[string]any
+	provider      provider.Provider
+	channels      []parser.MediaItem
+	movies        []parser.MediaItem
+	series        []parser.MediaItem
+	episodes      map[string][]parser.Episode
+	epgData       map[string][]parser.Programme
+	lastUpdate    time.Time
+	manifest      *Manifest
+	groupCatalogs map[string]string // catalog ID -> group name
+	logger        *slog.Logger
 }
 
 func NewInstance(config map[string]any, prov provider.Provider, logger *slog.Logger) *Instance {
@@ -223,7 +223,7 @@ func (i *Instance) filterItems(items []parser.MediaItem, extra map[string]string
 	}
 
 	if search, ok := extra["search"]; ok && search != "" {
-		filtered = filterBySearch(filtered, search)
+		filtered = i.filterBySearch(filtered, search)
 	}
 
 	return filtered
@@ -239,12 +239,21 @@ func filterByGenre(items []parser.MediaItem, genre string) []parser.MediaItem {
 	return result
 }
 
-func filterBySearch(items []parser.MediaItem, query string) []parser.MediaItem {
+func (i *Instance) filterBySearch(items []parser.MediaItem, query string) []parser.MediaItem {
 	query = strings.ToLower(query)
 	var result []parser.MediaItem
 	for _, item := range items {
 		if strings.Contains(strings.ToLower(item.Name), query) {
 			result = append(result, item)
+			continue
+		}
+		if item.Type == parser.TypeTV {
+			if prog := i.getCurrentProgramme(item.EPGID); prog != nil {
+				if strings.Contains(strings.ToLower(prog.Title), query) ||
+					strings.Contains(strings.ToLower(prog.Description), query) {
+					result = append(result, item)
+				}
+			}
 		}
 	}
 	return result
@@ -507,10 +516,10 @@ func (i *Instance) GetManifest() *Manifest {
 }
 
 type Stats struct {
-	Channels int `json:"channels"`
-	Movies   int `json:"movies"`
-	Series   int `json:"series"`
-	EPG      int `json:"epgChannels"`
+	Channels   int    `json:"channels"`
+	Movies     int    `json:"movies"`
+	Series     int    `json:"series"`
+	EPG        int    `json:"epgChannels"`
 	LastUpdate string `json:"lastUpdate"`
 }
 
