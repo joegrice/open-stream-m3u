@@ -11,8 +11,6 @@ A fast, self-hosted IPTV addon for Stremio. Written in Go, zero external depende
 - Encrypted configuration tokens (AES-256-GCM)
 - Fast in-memory LRU cache
 - Material Design web UI with dark/light mode
-- ~15MB Docker image (distroless)
-- Cloudflare Tunnel ready
 
 ## Quick Start
 
@@ -56,22 +54,6 @@ docker run -d -p 7000:7000 -e CONFIG_SECRET=my-secret open-stream-m3u
 3. Fill in your playlist/credentials
 4. Click **Install Addon**
 5. Copy the manifest URL or click **Open in Stremio**
-
-## Cloudflare Tunnel
-
-```bash
-cloudflared tunnel --url http://localhost:7000
-```
-
-Or with a config file:
-
-```yaml
-tunnel: <your-tunnel-id>
-ingress:
-  - hostname: iptv.yourdomain.com
-    service: http://localhost:7000
-  - service: http_status:404
-```
 
 ## API Endpoints
 
