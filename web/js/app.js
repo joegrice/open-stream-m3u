@@ -97,7 +97,10 @@
                 m3uUrl: m3uUrl,
                 enableEpg: document.getElementById('enableEpg').checked,
                 epgUrl: document.getElementById('epgUrl').value.trim(),
-                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0
+                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0,
+                enableTv: document.getElementById('enableTv').checked,
+                enableMovies: document.getElementById('enableMovies').checked,
+                enableSeries: document.getElementById('enableSeries').checked
             };
         } else {
             var xtreamUrl = document.getElementById('xtreamUrl').value.trim();
@@ -110,7 +113,10 @@
                 xtreamUsername: xtreamUsername,
                 xtreamPassword: xtreamPassword,
                 xtreamUseM3U: document.getElementById('xtreamUseM3U').checked,
-                enableEpg: document.getElementById('xtreamEnableEpg').checked
+                enableEpg: document.getElementById('xtreamEnableEpg').checked,
+                enableTv: document.getElementById('enableTv').checked,
+                enableMovies: document.getElementById('enableMovies').checked,
+                enableSeries: document.getElementById('enableSeries').checked
             };
         }
 
@@ -219,7 +225,10 @@
                 enableEpg: document.getElementById('enableEpg').checked,
                 epgUrl: document.getElementById('epgUrl').value.trim(),
                 epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0,
-                selectedGroups: getSelectedGroups()
+                selectedGroups: getSelectedGroups(),
+                enableTv: document.getElementById('enableTv').checked,
+                enableMovies: document.getElementById('enableMovies').checked,
+                enableSeries: document.getElementById('enableSeries').checked
             };
         } else {
             var xtreamUrl = document.getElementById('xtreamUrl').value.trim();
@@ -238,7 +247,10 @@
                 xtreamPassword: xtreamPassword,
                 xtreamUseM3U: document.getElementById('xtreamUseM3U').checked,
                 enableEpg: document.getElementById('xtreamEnableEpg').checked,
-                selectedGroups: getSelectedGroups()
+                selectedGroups: getSelectedGroups(),
+                enableTv: document.getElementById('enableTv').checked,
+                enableMovies: document.getElementById('enableMovies').checked,
+                enableSeries: document.getElementById('enableSeries').checked
             };
         }
 

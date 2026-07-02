@@ -57,7 +57,8 @@ func TestGetCatalogSearchEPG(t *testing.T) {
 		channels:      channels,
 		epgData:       epgData,
 		groupCatalogs: map[string]string{},
-		manifest:      BuildManifest(nil),
+		enabledTypes:  map[string]bool{"tv": true, "movie": true, "series": true},
+		manifest:      BuildManifest(nil, map[string]bool{"tv": true, "movie": true, "series": true}),
 	}
 
 	tests := []struct {
@@ -112,5 +113,42 @@ func TestGetCatalogSearchEPG(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDisabledTypesHideContent(t *testing.T) {
+	inst := &Instance{
+		channels: []parser.MediaItem{
+			{ID: "iptv_tv_1", Type: parser.TypeTV, Name: "TV Channel", URL: "http://example.com/tv"},
+		},
+		movies: []parser.MediaItem{
+			{ID: "iptv_movie_1", Type: parser.TypeMovie, Name: "A Movie", URL: "http://example.com/movie"},
+		},
+		series: []parser.MediaItem{
+			{ID: "iptv_series_1", Type: parser.TypeSeries, Name: "A Series"},
+		},
+		episodes: map[string][]parser.Episode{
+			"iptv_series_1": {{ID: "iptv_series_ep_1", Title: "Pilot", URL: "http://example.com/ep1"}},
+		},
+		groupCatalogs: map[string]string{},
+		enabledTypes:  map[string]bool{"tv": true, "movie": false, "series": false},
+	}
+
+	if got := inst.GetCatalog("movie", "iptv_movies", nil); len(got) != 0 {
+		t.Errorf("GetCatalog for disabled movie type returned %d results, want 0", len(got))
+	}
+	if got := inst.GetCatalog("series", "iptv_series", nil); len(got) != 0 {
+		t.Errorf("GetCatalog for disabled series type returned %d results, want 0", len(got))
+	}
+	if inst.GetStream("movie", "iptv_movie_1") != nil {
+		t.Error("GetStream returned a stream for a disabled movie type")
+	}
+	if inst.GetMeta("series", "iptv_series_1") != nil {
+		t.Error("GetMeta returned a meta for a disabled series type")
+	}
+
+	// Live TV should still work.
+	if got := inst.GetCatalog("channel", "iptv_channels", nil); len(got) != 1 {
+		t.Errorf("GetCatalog for enabled tv type returned %d results, want 1", len(got))
 	}
 }

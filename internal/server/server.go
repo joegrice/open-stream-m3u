@@ -153,9 +153,18 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	channels, _ := prov.FetchChannels(ctx)
-	movies, _ := prov.FetchMovies(ctx)
-	series, _ := prov.FetchSeries(ctx)
+	enabledTypes := addon.EnabledTypesFromConfig(cfg)
+
+	var channels, movies, series []parser.MediaItem
+	if enabledTypes["tv"] {
+		channels, _ = prov.FetchChannels(ctx)
+	}
+	if enabledTypes["movie"] {
+		movies, _ = prov.FetchMovies(ctx)
+	}
+	if enabledTypes["series"] {
+		series, _ = prov.FetchSeries(ctx)
+	}
 
 	all := make([]parser.MediaItem, 0, len(channels)+len(movies)+len(series))
 	all = append(all, channels...)

@@ -7,14 +7,14 @@ import (
 )
 
 type Manifest struct {
-	ID            string      `json:"id"`
-	Version       string      `json:"version"`
-	Name          string      `json:"name"`
-	Description   string      `json:"description"`
-	Resources     []string    `json:"resources"`
-	Types         []string    `json:"types"`
-	IDPrefixes    []string    `json:"idPrefixes"`
-	Catalogs      []Catalog   `json:"catalogs"`
+	ID            string         `json:"id"`
+	Version       string         `json:"version"`
+	Name          string         `json:"name"`
+	Description   string         `json:"description"`
+	Resources     []string       `json:"resources"`
+	Types         []string       `json:"types"`
+	IDPrefixes    []string       `json:"idPrefixes"`
+	Catalogs      []Catalog      `json:"catalogs"`
 	BehaviorHints map[string]any `json:"behaviorHints,omitempty"`
 }
 
@@ -27,9 +27,9 @@ type Catalog struct {
 }
 
 type CatalogExtra struct {
-	Name    string   `json:"name"`
-	IsRequired bool  `json:"isRequired,omitempty"`
-	Options []string `json:"options,omitempty"`
+	Name       string   `json:"name"`
+	IsRequired bool     `json:"isRequired,omitempty"`
+	Options    []string `json:"options,omitempty"`
 }
 
 type MetaPreview struct {
@@ -61,22 +61,22 @@ type Meta struct {
 }
 
 type Video struct {
-	ID        string `json:"id"`
-	Title     string `json:"title,omitempty"`
-	Season    int    `json:"season,omitempty"`
-	Episode   int    `json:"episode,omitempty"`
-	Released  string `json:"released,omitempty"`
-	Thumbnail string `json:"thumbnail,omitempty"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title,omitempty"`
+	Season    int     `json:"season,omitempty"`
+	Episode   int     `json:"episode,omitempty"`
+	Released  string  `json:"released,omitempty"`
+	Thumbnail string  `json:"thumbnail,omitempty"`
 	Stream    *Stream `json:"stream,omitempty"`
 }
 
 type Stream struct {
-	URL            string            `json:"url,omitempty"`
-	ExternalURL    string            `json:"externalUrl,omitempty"`
-	YouTube        string            `json:"ytId,omitempty"`
-	InfoHash       string            `json:"infoHash,omitempty"`
-	Title          string            `json:"title,omitempty"`
-	BehaviorHints  map[string]any    `json:"behaviorHints,omitempty"`
+	URL           string         `json:"url,omitempty"`
+	ExternalURL   string         `json:"externalUrl,omitempty"`
+	YouTube       string         `json:"ytId,omitempty"`
+	InfoHash      string         `json:"infoHash,omitempty"`
+	Title         string         `json:"title,omitempty"`
+	BehaviorHints map[string]any `json:"behaviorHints,omitempty"`
 }
 
 type CatalogResponse struct {
@@ -91,22 +91,38 @@ type StreamResponse struct {
 	Streams []Stream `json:"streams"`
 }
 
-func BuildManifest(selectedGroups []string) *Manifest {
+func BuildManifest(selectedGroups []string, enabledTypes map[string]bool) *Manifest {
 	m := &Manifest{
 		ID:          "org.openstream.m3u",
 		Version:     "1.0.0",
 		Name:        "Open Stream M3U",
 		Description: "IPTV addon for M3U playlists and EPG data",
 		Resources:   []string{"catalog", "stream", "meta"},
-		Types:       []string{"tv", "movie", "series", "channel"},
+		Types:       []string{},
 		IDPrefixes:  []string{"iptv_"},
 		BehaviorHints: map[string]any{
-			"configurable":        true,
+			"configurable":          true,
 			"configurationRequired": false,
 		},
 	}
 
+	if enabledTypes["tv"] {
+		m.Types = append(m.Types, "tv", "channel")
+	}
+	if enabledTypes["movie"] {
+		m.Types = append(m.Types, "movie")
+	}
+	if enabledTypes["series"] {
+		m.Types = append(m.Types, "series")
+	}
+
 	if len(selectedGroups) > 0 {
+		// Group catalogs are always created when groups are selected.
+		// The catalog itself is typed "channel"; the items inside are
+		// limited to the types that were actually fetched.
+		if !enabledTypes["tv"] {
+			m.Types = append(m.Types, "channel")
+		}
 		for _, g := range selectedGroups {
 			m.Catalogs = append(m.Catalogs, Catalog{
 				Type: "channel",
@@ -118,39 +134,44 @@ func BuildManifest(selectedGroups []string) *Manifest {
 				},
 			})
 		}
-	} else {
-		m.Catalogs = []Catalog{
-			{
-				Type: "channel",
-				ID:   "iptv_channels",
-				Name: "IPTV Channels",
-				Extra: []CatalogExtra{
-					{Name: "genre"},
-					{Name: "search"},
-					{Name: "skip"},
-				},
+		return m
+	}
+
+	if enabledTypes["tv"] {
+		m.Catalogs = append(m.Catalogs, Catalog{
+			Type: "channel",
+			ID:   "iptv_channels",
+			Name: "IPTV Channels",
+			Extra: []CatalogExtra{
+				{Name: "genre"},
+				{Name: "search"},
+				{Name: "skip"},
 			},
-			{
-				Type: "movie",
-				ID:   "iptv_movies",
-				Name: "IPTV Movies",
-				Extra: []CatalogExtra{
-					{Name: "genre"},
-					{Name: "search"},
-					{Name: "skip"},
-				},
+		})
+	}
+	if enabledTypes["movie"] {
+		m.Catalogs = append(m.Catalogs, Catalog{
+			Type: "movie",
+			ID:   "iptv_movies",
+			Name: "IPTV Movies",
+			Extra: []CatalogExtra{
+				{Name: "genre"},
+				{Name: "search"},
+				{Name: "skip"},
 			},
-			{
-				Type: "series",
-				ID:   "iptv_series",
-				Name: "IPTV Series",
-				Extra: []CatalogExtra{
-					{Name: "genre"},
-					{Name: "search"},
-					{Name: "skip"},
-				},
+		})
+	}
+	if enabledTypes["series"] {
+		m.Catalogs = append(m.Catalogs, Catalog{
+			Type: "series",
+			ID:   "iptv_series",
+			Name: "IPTV Series",
+			Extra: []CatalogExtra{
+				{Name: "genre"},
+				{Name: "search"},
+				{Name: "skip"},
 			},
-		}
+		})
 	}
 
 	return m

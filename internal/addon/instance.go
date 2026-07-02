@@ -26,12 +26,14 @@ type Instance struct {
 	lastUpdate    time.Time
 	manifest      *Manifest
 	groupCatalogs map[string]string // catalog ID -> group name
+	enabledTypes  map[string]bool
 	logger        *slog.Logger
 }
 
 func NewInstance(config map[string]any, prov provider.Provider, logger *slog.Logger) *Instance {
 	selectedGroups := extractSelectedGroups(config)
-	manifest := BuildManifest(selectedGroups)
+	enabledTypes := EnabledTypesFromConfig(config)
+	manifest := BuildManifest(selectedGroups, enabledTypes)
 
 	groupCatalogs := make(map[string]string)
 	for _, g := range selectedGroups {
@@ -41,6 +43,7 @@ func NewInstance(config map[string]any, prov provider.Provider, logger *slog.Log
 	return &Instance{
 		config:        config,
 		provider:      prov,
+		enabledTypes:  enabledTypes,
 		episodes:      make(map[string][]parser.Episode),
 		epgData:       make(map[string][]parser.Programme),
 		manifest:      manifest,
@@ -69,6 +72,21 @@ func extractSelectedGroups(config map[string]any) []string {
 	return nil
 }
 
+func EnabledTypesFromConfig(config map[string]any) map[string]bool {
+	return map[string]bool{
+		"tv":     configBool(config, "enableTv", true),
+		"movie":  configBool(config, "enableMovies", true),
+		"series": configBool(config, "enableSeries", true),
+	}
+}
+
+func configBool(config map[string]any, key string, defaultValue bool) bool {
+	if v, ok := config[key].(bool); ok {
+		return v
+	}
+	return defaultValue
+}
+
 func (i *Instance) Initialize(ctx context.Context) error {
 	return i.refresh(ctx)
 }
@@ -76,28 +94,40 @@ func (i *Instance) Initialize(ctx context.Context) error {
 func (i *Instance) refresh(ctx context.Context) error {
 	i.logger.Info("Refreshing addon data")
 
-	channels, err := i.provider.FetchChannels(ctx)
-	if err != nil {
-		i.logger.Error("Failed to fetch channels", "error", err)
-		channels = nil
+	var channels, movies, series []parser.MediaItem
+	var epgData map[string][]parser.Programme
+	var err error
+
+	if i.enabledTypes["tv"] {
+		channels, err = i.provider.FetchChannels(ctx)
+		if err != nil {
+			i.logger.Error("Failed to fetch channels", "error", err)
+			channels = nil
+		}
 	}
 
-	movies, err := i.provider.FetchMovies(ctx)
-	if err != nil {
-		i.logger.Error("Failed to fetch movies", "error", err)
-		movies = nil
+	if i.enabledTypes["movie"] {
+		movies, err = i.provider.FetchMovies(ctx)
+		if err != nil {
+			i.logger.Error("Failed to fetch movies", "error", err)
+			movies = nil
+		}
 	}
 
-	series, err := i.provider.FetchSeries(ctx)
-	if err != nil {
-		i.logger.Warn("Failed to fetch series", "error", err)
-		series = nil
+	if i.enabledTypes["series"] {
+		series, err = i.provider.FetchSeries(ctx)
+		if err != nil {
+			i.logger.Warn("Failed to fetch series", "error", err)
+			series = nil
+		}
 	}
 
-	epgData, err := i.provider.FetchEPG(ctx)
-	if err != nil {
-		i.logger.Warn("Failed to fetch EPG", "error", err)
-		epgData = nil
+	if i.enabledTypes["tv"] && configBool(i.config, "enableEpg", true) {
+		epgData, err = i.provider.FetchEPG(ctx)
+		if err != nil {
+			i.logger.Warn("Failed to fetch EPG", "error", err)
+			epgData = nil
+		}
 	}
 
 	i.mu.Lock()
@@ -182,10 +212,19 @@ func (i *Instance) GetCatalog(catalogType, catalogID string, extra map[string]st
 	} else {
 		switch catalogID {
 		case "iptv_channels":
+			if !i.enabledTypes["tv"] {
+				return nil
+			}
 			items = i.channels
 		case "iptv_movies":
+			if !i.enabledTypes["movie"] {
+				return nil
+			}
 			items = i.movies
 		case "iptv_series":
+			if !i.enabledTypes["series"] {
+				return nil
+			}
 			items = i.series
 		default:
 			return nil
@@ -324,6 +363,10 @@ func (i *Instance) GetStream(itemType, itemID string) *Stream {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
+	if !i.enabledTypes[itemType] {
+		return nil
+	}
+
 	var items []parser.MediaItem
 	switch itemType {
 	case "tv":
@@ -375,7 +418,14 @@ func (i *Instance) GetMeta(itemType, itemID string) *Meta {
 	defer i.mu.RUnlock()
 
 	if itemType == "series" || strings.HasPrefix(itemID, "iptv_series_") {
+		if !i.enabledTypes["series"] {
+			return nil
+		}
 		return i.getSeriesMeta(itemID)
+	}
+
+	if !i.enabledTypes[itemType] {
+		return nil
 	}
 
 	var items []parser.MediaItem
