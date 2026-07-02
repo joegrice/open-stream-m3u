@@ -5,7 +5,7 @@ services:
       - "7001:7001"
     environment:
       - CONFIG_SECRET=${CONFIG_SECRET:-change-me-in-production}
-      - DEBUG=${DEBUG:-false}
+      - DEBUG=true
       - CACHE_TTL=${CACHE_TTL:-6h}
       - MAX_CACHE_ENTRIES=${MAX_CACHE_ENTRIES:-500}
     restart: unless-stopped

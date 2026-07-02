@@ -63,7 +63,7 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("GET /css/", fileServer.ServeHTTP)
 	s.mux.HandleFunc("GET /js/", fileServer.ServeHTTP)
 
-	s.mux.HandleFunc("GET /{token}/", s.handleTokenRoute)
+	s.mux.HandleFunc("GET /{token}/{path...}", s.handleTokenRoute)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +256,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 	stats := instance.GetStats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"stats": stats,
+		"stats":  stats,
 		"config": instance.GetConfig(),
 	})
 }
@@ -295,22 +295,9 @@ func (s *Server) handleTokenRoute(w http.ResponseWriter, r *http.Request) {
 		addon.HandleStream(instance)(w, r)
 	case strings.HasPrefix(afterToken, "/meta/"):
 		addon.HandleMeta(instance)(w, r)
-	case strings.HasPrefix(afterToken, "/logo/"):
-		s.handleLogoProxy(w, r)
 	default:
 		http.NotFound(w, r)
 	}
-}
-
-func (s *Server) handleLogoProxy(w http.ResponseWriter, r *http.Request) {
-	logoID := r.PathValue("id")
-	if logoID == "" {
-		http.Error(w, "Missing logo ID", http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	http.Redirect(w, r, fmt.Sprintf("https://via.placeholder.com/300x400/333333/FFFFFF?text=%s", logoID), http.StatusFound)
 }
 
 func (s *Server) getOrBuildInstance(token string) (*addon.Instance, error) {
