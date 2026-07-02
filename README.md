@@ -1,6 +1,6 @@
 # Open Stream M3U
 
-A fast, self-hosted IPTV addon for Stremio. Written in Go, zero external dependencies.
+A fast, self-hosted IPTV addon. Written in Go, zero external dependencies.
 
 ## Features
 
@@ -64,7 +64,7 @@ docker run -d -p 7000:7000 -e CONFIG_SECRET=my-secret open-stream-m3u
 | `GET /health` | Health check |
 | `POST /api/prefetch` | CORS bypass proxy |
 | `POST /api/encrypt` | Encrypt config token |
-| `GET /{token}/manifest.json` | Stremio manifest |
+| `GET /{token}/manifest.json` | Addon manifest |
 | `GET /{token}/catalog/{type}/{id}.json` | Catalog |
 | `GET /{token}/stream/{type}/{id}.json` | Stream |
 | `GET /{token}/meta/{type}/{id}.json` | Metadata |

@@ -4,7 +4,7 @@ Agent-focused context for working on Open Stream M3U. For human users, see READM
 
 ## Project Snapshot
 
-- **What:** Self-hosted Stremio IPTV addon for M3U playlists and XMLTV EPG.
+- **What:** Self-hosted IPTV addon for M3U playlists and XMLTV EPG.
 - **Stack:** Go 1.22+, standard library only (zero external dependencies).
 - **Entry point:** `main.go` embeds `web/` and starts `internal/server`.
 - **Security-sensitive areas:** encrypted config tokens, CORS bypass proxy, external URL fetching.
@@ -38,7 +38,7 @@ main.go
 
 - `internal/config` — env-based config.
 - `internal/server` — HTTP routing, middleware, API handlers.
-- `internal/addon` — Stremio manifest/catalog/stream/meta handlers and instance cache.
+- `internal/addon` — addon manifest/catalog/stream/meta handlers and instance cache.
 - `internal/provider` — Direct M3U and Xtream Codes providers.
 - `internal/parser` — M3U and XMLTV parsing.
 - `internal/crypto` — token encoding/decoding and AES-256-GCM encryption.
@@ -98,7 +98,7 @@ main.go
 
 - `cmd/server` does not exist; run from repo root with `go run main.go`.
 - Token routes: `{token}/{path...}` means the token is the first path segment.
-- Group catalog IDs are derived from `md5(group)` and must stay stable for Stremio.
+- Group catalog IDs are derived from `md5(group)` and must stay stable.
 - Cache TTL (`CACHE_TTL`) is separate from per-fetch timeouts.
 - `handleGroups` ignores fetch errors intentionally to return partial group lists; document if changing.
 
