@@ -111,7 +111,6 @@ header p {
 
 .card h2 {
     font: var(--m3-font-title-md);
-    font-size: 1.25rem;
     margin-bottom: var(--m3-space-sm);
     color: var(--m3-on-surface);
 }
@@ -387,7 +386,6 @@ header p {
     color: var(--m3-primary);
     margin-bottom: var(--m3-space-md);
     font: var(--m3-font-title-md);
-    font-size: 1.25rem;
 }
 
 .input-group {
