@@ -69,7 +69,7 @@ main.go
 3. Consume `--m3-*` tokens from `tokens.css`; do not re-introduce ad-hoc
    `--bg-*` / `--accent*` / `--text-*` vars.
 4. Material 3 styling, dark/light via `[data-theme]`, pill buttons, M3
-   elevation, outlined text fields — see "UI / Design System" above.
+   elevation, outlined text fields — see "UI / Design System" below.
 5. Served via `embed.FS`; rebuild not required for static changes.
 
 ### Fix a bug

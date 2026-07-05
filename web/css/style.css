@@ -5,11 +5,9 @@
 }
 
 body {
-    font-family: var(--m3-font-stack);
     font: var(--m3-font-body-md);
     background: var(--m3-background);
     color: var(--m3-on-background);
-    line-height: 1.6;
     min-height: 100vh;
 }
 
@@ -167,7 +165,6 @@ header p {
 
 .info-section h3 {
     font: var(--m3-font-title-md);
-    font-size: 1rem;
     margin-bottom: var(--m3-space-sm);
     color: var(--m3-on-surface);
 }
@@ -471,7 +468,6 @@ header p {
     color: var(--m3-on-surface-variant);
     opacity: 0.7;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
     margin-top: 0.25rem;
 }
 
@@ -533,7 +529,6 @@ footer p {
 
 .group-selector-header h3 {
     font: var(--m3-font-title-md);
-    font-size: 1rem;
     color: var(--m3-on-surface);
 }
 

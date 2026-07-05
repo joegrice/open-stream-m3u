@@ -130,8 +130,8 @@ overrides live in `tokens.css` under `[data-theme="dark"]`.
   accent system. CTAs, focused field borders, active tab indicator, links.
 - **secondary** family — neutral-violet; used for tonal buttons and tabs.
 - **tertiary** family — rosy accent; reserved for future emphasis.
-- **error / on-error / error-container / on-error-container** — validation
-  and failure states (only one such state today).
+- **error / on-error / error-container / on-error-container** — reserved for
+  validation and failure states; not yet consumed by current components.
 - **background / on-background** — page canvas. Distinct from surface per
   M3; today they share a value but the roles must not be conflated.
 - **surface / on-surface / surface-variant / on-surface-variant** — card and
@@ -144,7 +144,8 @@ overrides live in `tokens.css` under `[data-theme="dark"]`.
 - **inverse-surface / inverse-on-surface** — snackbar / inverse emphasis.
 
 A single non-M3 color survives: `#4caf50` for the green check-marks in the
-Features list. It is documented inline in `tokens.css` and must not propagate.
+Features list (`#81c784` in dark theme). It is documented inline in
+`tokens.css` and must not propagate.
 
 ## Typography
 
