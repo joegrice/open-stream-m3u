@@ -64,8 +64,13 @@ main.go
 
 ### Change the UI
 1. Files under `web/` (HTML, CSS, JS).
-2. Keep Material Design styling and dark/light mode support.
-3. The UI is served via `embed.FS`; rebuild not required for static changes.
+2. **Start at `DESIGN.md`** for any visual change; update it and
+   `web/css/tokens.css` together when tokens move.
+3. Consume `--m3-*` tokens from `tokens.css`; do not re-introduce ad-hoc
+   `--bg-*` / `--accent*` / `--text-*` vars.
+4. Material 3 styling, dark/light via `[data-theme]`, pill buttons, M3
+   elevation, outlined text fields — see "UI / Design System" above.
+5. Served via `embed.FS`; rebuild not required for static changes.
 
 ### Fix a bug
 1. Reproduce with a test if possible.
@@ -85,6 +90,7 @@ main.go
 - **Timeouts:** always use `context.WithTimeout` for external fetches.
 - **Tests:** table-driven tests for parsers and handlers; `go test ./...` must pass.
 - **Naming:** keep package names short and consistent with existing code.
+- **CSS:** prefer Material 3 role tokens (`--m3-*`); see `DESIGN.md` and "UI / Design System".
 
 ## Security & Trust Boundaries
 
@@ -93,6 +99,25 @@ main.go
 - Tokens may be URL-encoded; `handleTokenRoute()` decodes before parsing.
 - Token decryption fails closed when `CONFIG_SECRET` is missing or invalid.
 - Validate external URLs before `http.Get`; respect `PrefetchMaxSize`.
+
+## UI / Design System
+
+- `DESIGN.md` at repo root is the **source of truth** for the visual identity
+  — Material 3 design system. Read it before touching anything under `web/`.
+- `web/css/tokens.css` is the CSS reflection of `DESIGN.md`. The mapping is 1:1:
+  every `colors.<role>` in DESIGN.md front matter becomes `--m3-<role>` in
+  `tokens.css`. When you change one, change the other in the same commit.
+- Two themes are expressed by overriding the `--m3-*` vars under
+  `[data-theme="dark"]` in `tokens.css`. Do **not** introduce new ad-hoc theme
+  vars elsewhere; reuse the M3 role tokens.
+- Non-M3 additions (the green `--m3-success` check-mark color is the only
+  current one) must be documented inline in `tokens.css` with a
+  `/* non-M3: … */` comment. Keep them rare.
+- Elevation, motion, shape, and spacing scales also live in `tokens.css` and
+  follow the M3 reference values documented in the DESIGN.md body. Prefer
+  `--m3-elevation-N` and `--m3-radius-N` over hand-rolled shadow/radius.
+- Typography uses the system font stack only (no web fonts, no CDN, no
+  bundling). Font weights and sizes come from `--m3-font-*` shorthands.
 
 ## Common Pitfalls
 
@@ -108,3 +133,7 @@ main.go
 - LRU cache of addon instances to avoid re-fetching playlists on every request.
 - AES-256-GCM for encrypted tokens with `CONFIG_SECRET`.
 - Web UI is static and embedded; no build step.
+- M3 token system per `DESIGN.md` spec; flat `--m3-*` CSS reflection in
+  `tokens.css`, no aliasing layer, no build step.
+- System font stack only for Material 3 — no web fonts, preserves the
+  zero-external-deps / embedded model.
