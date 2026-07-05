@@ -10,14 +10,14 @@ A fast, self-hosted IPTV addon. Written in Go, zero external dependencies.
 - Movies, Series, and Live TV catalogs
 - Encrypted configuration tokens (AES-256-GCM)
 - Fast in-memory LRU cache
-- Material Design web UI with dark/light mode
+- Material 3 web UI with dark/light mode
 
 ## Quick Start
 
 ### Local
 
 ```bash
-go run ./cmd/server
+go run main.go
 ```
 
 Opens on `http://localhost:7001`
@@ -32,7 +32,7 @@ docker compose up -d
 
 ```bash
 docker build -t open-stream-m3u .
-docker run -d -p 7000:7000 -e CONFIG_SECRET=my-secret open-stream-m3u
+docker run -d -p 7001:7001 -e CONFIG_SECRET=my-secret open-stream-m3u
 ```
 
 ## Configuration
@@ -49,7 +49,7 @@ docker run -d -p 7000:7000 -e CONFIG_SECRET=my-secret open-stream-m3u
 
 ## Usage
 
-1. Open `http://localhost:7000` in your browser
+1. Open `http://localhost:7001` in your browser
 2. Choose **Direct M3U** or **Xtream Codes** mode
 3. Fill in your playlist/credentials
 4. Click **Install Addon**
@@ -64,6 +64,9 @@ docker run -d -p 7000:7000 -e CONFIG_SECRET=my-secret open-stream-m3u
 | `GET /health` | Health check |
 | `POST /api/prefetch` | CORS bypass proxy |
 | `POST /api/encrypt` | Encrypt config token |
+| `POST /api/groups` | List playlist groups for selection |
+| `GET /api/info` | Addon info for a token |
+| `GET /api/debug` | Debug state (requires `DEBUG=true`) |
 | `GET /{token}/manifest.json` | Addon manifest |
 | `GET /{token}/catalog/{type}/{id}.json` | Catalog |
 | `GET /{token}/stream/{type}/{id}.json` | Stream |
