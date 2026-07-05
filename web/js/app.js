@@ -97,7 +97,6 @@
                 m3uUrl: m3uUrl,
                 enableEpg: document.getElementById('enableEpg').checked,
                 epgUrl: document.getElementById('epgUrl').value.trim(),
-                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0,
                 enableTv: document.getElementById('enableTv').checked,
                 enableMovies: document.getElementById('enableMovies').checked,
                 enableSeries: document.getElementById('enableSeries').checked
@@ -224,7 +223,6 @@
                 m3uUrl: m3uUrl,
                 enableEpg: document.getElementById('enableEpg').checked,
                 epgUrl: document.getElementById('epgUrl').value.trim(),
-                epgOffsetHours: parseFloat(document.getElementById('epgOffset').value) || 0,
                 selectedGroups: getSelectedGroups(),
                 enableTv: document.getElementById('enableTv').checked,
                 enableMovies: document.getElementById('enableMovies').checked,
@@ -373,7 +371,7 @@
 
             updateProgress(85, 'Generating configuration token...');
 
-            // Encode config to base64url
+            // Encode config to base64url (used as fallback when CONFIG_SECRET is unset)
             const jsonStr = JSON.stringify(config);
             const token = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, function(m, p) {
                 return String.fromCharCode('0x' + p);
@@ -382,11 +380,25 @@
                 .replace(/\//g, '_')
                 .replace(/=+$/, '');
 
+            // ponytail: fall back to base64 if /api/encrypt returns non-200 (CONFIG_SECRET unset)
+            let finalToken = token;
+            try {
+                const encResp = await fetch('/api/encrypt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonStr
+                });
+                if (encResp.ok) {
+                    const encData = await encResp.json();
+                    if (encData && encData.token) finalToken = encData.token;
+                }
+            } catch (_) { /* service unavailable; use base64 fallback */ }
+
             updateProgress(95, 'Building manifest URL...');
 
             const baseUrl = window.location.origin;
-            const manifestUrl = baseUrl + '/' + token + '/manifest.json';
-            const stremioUrl = 'stremio://' + baseUrl.replace(/^https?:\/\//, '') + '/' + token + '/manifest.json';
+            const manifestUrl = baseUrl + '/' + finalToken + '/manifest.json';
+            const stremioUrl = 'stremio://' + baseUrl.replace(/^https?:\/\//, '') + '/' + finalToken + '/manifest.json';
 
             updateProgress(100, 'Complete!');
 

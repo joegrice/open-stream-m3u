@@ -275,8 +275,6 @@ func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.Media
 		return nil, err
 	}
 
-	fmt.Printf("[DEBUG] VOD API response: %d bytes, status: %d\n", len(body), resp.StatusCode)
-
 	// Check if response is an error message
 	var errorResp struct {
 		Error string `json:"error"`
@@ -296,12 +294,8 @@ func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.Media
 	}
 
 	if err := json.Unmarshal(body, &streams); err != nil {
-		fmt.Printf("[DEBUG] VOD JSON parse error: %v\n", err)
-		fmt.Printf("[DEBUG] First 500 bytes: %s\n", string(body[:min(500, len(body))]))
 		return nil, fmt.Errorf("failed to parse VOD response: %w", err)
 	}
-
-	fmt.Printf("[DEBUG] VOD streams parsed: %d\n", len(streams))
 
 	var movies []parser.MediaItem
 	for _, s := range streams {

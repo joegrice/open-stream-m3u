@@ -137,3 +137,6 @@ main.go
   `tokens.css`, no aliasing layer, no build step.
 - System font stack only for Material 3 — no web fonts, preserves the
   zero-external-deps / embedded model.
+- Never commit specs or implementation plans. Write them under
+  `docs/superpowers/specs/` and `docs/superpowers/plans/` as working
+  documents; leave them unstaged so git history stays focused on shipped code.
