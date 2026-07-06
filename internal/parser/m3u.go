@@ -19,6 +19,7 @@ const (
 type MediaItem struct {
 	ID        string
 	Name      string
+	NameLower string
 	URL       string
 	Type      ItemType
 	Logo      string
@@ -74,6 +75,7 @@ func ParseM3U(content string) ([]MediaItem, error) {
 			attrs := parseAttributes(matches[2])
 			currentItem.Attrs = attrs
 			currentItem.Name = strings.TrimSpace(matches[3])
+			currentItem.NameLower = strings.ToLower(currentItem.Name)
 			currentItem.Logo = attrs["tvg-logo"]
 			currentItem.EPGID = attrs["tvg-id"]
 			if currentItem.EPGID == "" {
@@ -176,9 +178,10 @@ func GroupSeries(items []MediaItem) (map[string][]Episode, map[string]*MediaItem
 
 		if _, exists := seriesMap[seriesID]; !exists {
 			seriesMap[seriesID] = &MediaItem{
-				ID:    seriesID,
-				Name:  baseName,
-				Type:  TypeSeries,
+				ID:        seriesID,
+				Name:      baseName,
+				NameLower: strings.ToLower(baseName),
+				Type:      TypeSeries,
 				Logo:  item.Logo,
 				Group: item.Group,
 				Plot:  item.Plot,

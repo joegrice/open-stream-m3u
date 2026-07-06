@@ -2,6 +2,7 @@ package parser
 
 import (
 	"encoding/xml"
+	"sort"
 	"strings"
 	"time"
 )
@@ -10,7 +11,9 @@ type Programme struct {
 	Start       time.Time
 	Stop        time.Time
 	Title       string
+	TitleLower  string
 	Description string
+	DescLower   string
 }
 
 type xmltvTV struct {
@@ -56,10 +59,19 @@ func ParseXMLTV(content string) (map[string][]Programme, error) {
 			Start:       start,
 			Stop:        stop,
 			Title:       title,
+			TitleLower:  strings.ToLower(title),
 			Description: desc,
+			DescLower:   strings.ToLower(desc),
 		}
 
 		epgData[prog.Channel] = append(epgData[prog.Channel], p)
+	}
+
+	// Sort each channel's programmes by Start so GetCurrentProgramme can binary-search.
+	for _, progs := range epgData {
+		sort.Slice(progs, func(i, j int) bool {
+			return progs[i].Start.Before(progs[j].Start)
+		})
 	}
 
 	return epgData, nil
@@ -132,12 +144,21 @@ func parseTimezone(tz string) (int, error) {
 }
 
 func GetCurrentProgramme(programmes []Programme) *Programme {
+	if len(programmes) == 0 {
+		return nil
+	}
 	now := time.Now()
-	for i := range programmes {
-		p := &programmes[i]
-		if now.After(p.Start) && now.Before(p.Stop) {
-			return p
-		}
+	// ponytail: assumes non-overlapping programmes per channel (sorted by Start in ParseXMLTV).
+	// Find last programme with Start <= now via binary search for first Start > now.
+	idx := sort.Search(len(programmes), func(i int) bool {
+		return programmes[i].Start.After(now)
+	})
+	if idx == 0 {
+		return nil
+	}
+	candidate := &programmes[idx-1]
+	if now.Before(candidate.Stop) {
+		return candidate
 	}
 	return nil
 }

@@ -22,20 +22,22 @@ import (
 )
 
 type Server struct {
-	cfg    *config.Config
-	logger *slog.Logger
-	cache  *addon.InstanceCache
-	mux    *http.ServeMux
-	webFS  fs.FS
+	cfg          *config.Config
+	logger       *slog.Logger
+	cache        *addon.InstanceCache
+	mux          *http.ServeMux
+	webFS        fs.FS
+	prefetchClnt *http.Client
 }
 
 func New(cfg *config.Config, logger *slog.Logger, webFS fs.FS) *Server {
 	s := &Server{
-		cfg:    cfg,
-		logger: logger,
-		cache:  addon.NewInstanceCache(cfg.MaxCacheEntries, cfg.CacheTTL),
-		mux:    http.NewServeMux(),
-		webFS:  webFS,
+		cfg:          cfg,
+		logger:       logger,
+		cache:        addon.NewInstanceCache(cfg.MaxCacheEntries, cfg.CacheTTL),
+		mux:          http.NewServeMux(),
+		webFS:        webFS,
+		prefetchClnt: &http.Client{Timeout: 45 * time.Second},
 	}
 	s.setupRoutes()
 
@@ -126,8 +128,7 @@ func (s *Server) handlePrefetch(w http.ResponseWriter, r *http.Request) {
 	}
 	httpReq.Header.Set("User-Agent", "open-stream-m3u/1.0")
 
-	client := &http.Client{Timeout: 45 * time.Second}
-	resp, err := client.Do(httpReq)
+	resp, err := s.prefetchClnt.Do(httpReq)
 	if err != nil {
 		http.Error(w, "Fetch failed", http.StatusBadGateway)
 		return

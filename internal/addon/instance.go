@@ -24,6 +24,7 @@ type Instance struct {
 	episodes      map[string][]parser.Episode
 	itemIndex     map[string]*parser.MediaItem
 	episodeIndex  map[string]*parser.Episode
+	groupItems    map[string][]parser.MediaItem // group name -> items in that group
 	epgData       map[string][]parser.Programme
 	lastUpdate    time.Time
 	manifest      *Manifest
@@ -136,8 +137,9 @@ func (i *Instance) refresh(ctx context.Context) error {
 	return nil
 }
 
-// buildItemIndexLocked builds itemIndex from channels+movies+series. Caller
-// must hold i.mu in write mode.
+// buildItemIndexLocked builds itemIndex from channels+movies+series and
+// groupItems (per-group slices) for O(1) group-catalog lookups. Caller must
+// hold i.mu in write mode.
 func (i *Instance) buildItemIndexLocked() {
 	i.itemIndex = make(map[string]*parser.MediaItem, len(i.channels)+len(i.movies)+len(i.series))
 	for idx := range i.channels {
@@ -148,6 +150,28 @@ func (i *Instance) buildItemIndexLocked() {
 	}
 	for idx := range i.series {
 		i.itemIndex[i.series[idx].ID] = &i.series[idx]
+	}
+
+	// Precompute per-group slices only when group catalogs are configured.
+	if len(i.groupCatalogs) == 0 {
+		i.groupItems = nil
+		return
+	}
+	i.groupItems = make(map[string][]parser.MediaItem)
+	appendGroup := func(item parser.MediaItem) {
+		if item.Group == "" {
+			return
+		}
+		i.groupItems[item.Group] = append(i.groupItems[item.Group], item)
+	}
+	for _, item := range i.channels {
+		appendGroup(item)
+	}
+	for _, item := range i.movies {
+		appendGroup(item)
+	}
+	for _, item := range i.series {
+		appendGroup(item)
 	}
 }
 
@@ -204,11 +228,10 @@ func (i *Instance) GetCatalog(catalogType, catalogID string, extra map[string]st
 	var items []parser.MediaItem
 
 	if groupName, ok := i.groupCatalogs[catalogID]; ok {
-		all := make([]parser.MediaItem, 0, len(i.channels)+len(i.movies)+len(i.series))
-		all = append(all, i.channels...)
-		all = append(all, i.movies...)
-		all = append(all, i.series...)
-		items = filterByGenre(all, groupName)
+		// groupItems is precomputed at refresh — no per-request alloc or scan.
+		if gi, ok := i.groupItems[groupName]; ok {
+			items = gi
+		}
 	} else {
 		switch catalogID {
 		case "iptv_channels":
@@ -282,14 +305,27 @@ func (i *Instance) filterBySearch(items []parser.MediaItem, query string) []pars
 	query = strings.ToLower(query)
 	var result []parser.MediaItem
 	for _, item := range items {
-		if strings.Contains(strings.ToLower(item.Name), query) {
+		// ponytail: NameLower is populated by ParseM3U; fall back to ToLower for
+		// ad-hoc items (tests/manual construction).
+		nameLower := item.NameLower
+		if nameLower == "" {
+			nameLower = strings.ToLower(item.Name)
+		}
+		if strings.Contains(nameLower, query) {
 			result = append(result, item)
 			continue
 		}
 		if item.Type == parser.TypeTV {
 			if prog := i.getCurrentProgramme(item.EPGID); prog != nil {
-				if strings.Contains(strings.ToLower(prog.Title), query) ||
-					strings.Contains(strings.ToLower(prog.Description), query) {
+				titleLower := prog.TitleLower
+				if titleLower == "" {
+					titleLower = strings.ToLower(prog.Title)
+				}
+				descLower := prog.DescLower
+				if descLower == "" {
+					descLower = strings.ToLower(prog.Description)
+				}
+				if strings.Contains(titleLower, query) || strings.Contains(descLower, query) {
 					result = append(result, item)
 				}
 			}
