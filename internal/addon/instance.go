@@ -22,6 +22,8 @@ type Instance struct {
 	movies        []parser.MediaItem
 	series        []parser.MediaItem
 	episodes      map[string][]parser.Episode
+	itemIndex     map[string]*parser.MediaItem
+	episodeIndex  map[string]*parser.Episode
 	epgData       map[string][]parser.Programme
 	lastUpdate    time.Time
 	manifest      *Manifest
@@ -45,6 +47,7 @@ func NewInstance(config map[string]any, prov provider.Provider, logger *slog.Log
 		provider:      prov,
 		enabledTypes:  enabledTypes,
 		episodes:      make(map[string][]parser.Episode),
+		episodeIndex:  make(map[string]*parser.Episode),
 		epgData:       make(map[string][]parser.Programme),
 		manifest:      manifest,
 		groupCatalogs: groupCatalogs,
@@ -96,30 +99,10 @@ func (i *Instance) refresh(ctx context.Context) error {
 
 	var channels, movies, series []parser.MediaItem
 	var epgData map[string][]parser.Programme
-	var err error
 
-	if i.enabledTypes["tv"] {
-		channels, err = i.provider.FetchChannels(ctx)
-		if err != nil {
-			i.logger.Error("Failed to fetch channels", "error", err)
-			channels = nil
-		}
-	}
-
-	if i.enabledTypes["movie"] {
-		movies, err = i.provider.FetchMovies(ctx)
-		if err != nil {
-			i.logger.Error("Failed to fetch movies", "error", err)
-			movies = nil
-		}
-	}
-
-	if i.enabledTypes["series"] {
-		series, err = i.provider.FetchSeries(ctx)
-		if err != nil {
-			i.logger.Warn("Failed to fetch series", "error", err)
-			series = nil
-		}
+	channels, movies, series, err := i.provider.FetchAll(ctx)
+	if err != nil {
+		i.logger.Error("Provider FetchAll failed", "error", err)
 	}
 
 	if i.enabledTypes["tv"] && configBool(i.config, "enableEpg", true) {
@@ -135,6 +118,8 @@ func (i *Instance) refresh(ctx context.Context) error {
 	i.movies = movies
 	i.series = series
 	i.epgData = epgData
+	i.buildItemIndexLocked()
+	i.episodeIndex = make(map[string]*parser.Episode)
 	i.lastUpdate = time.Now()
 	i.mu.Unlock()
 
@@ -149,6 +134,21 @@ func (i *Instance) refresh(ctx context.Context) error {
 	)
 
 	return nil
+}
+
+// buildItemIndexLocked builds itemIndex from channels+movies+series. Caller
+// must hold i.mu in write mode.
+func (i *Instance) buildItemIndexLocked() {
+	i.itemIndex = make(map[string]*parser.MediaItem, len(i.channels)+len(i.movies)+len(i.series))
+	for idx := range i.channels {
+		i.itemIndex[i.channels[idx].ID] = &i.channels[idx]
+	}
+	for idx := range i.movies {
+		i.itemIndex[i.movies[idx].ID] = &i.movies[idx]
+	}
+	for idx := range i.series {
+		i.itemIndex[i.series[idx].ID] = &i.series[idx]
+	}
 }
 
 func (i *Instance) updateManifestGenres() {
@@ -367,50 +367,34 @@ func (i *Instance) GetStream(itemType, itemID string) *Stream {
 		return nil
 	}
 
-	var items []parser.MediaItem
-	switch itemType {
-	case "tv":
-		items = i.channels
-	case "movie":
-		items = i.movies
-	default:
+	item, ok := i.itemIndex[itemID]
+	if !ok {
 		return nil
 	}
-
-	for _, item := range items {
-		if item.ID == itemID {
-			return &Stream{
-				URL:   item.URL,
-				Title: item.Name,
-				BehaviorHints: map[string]any{
-					"notWebReady": true,
-				},
-			}
-		}
+	return &Stream{
+		URL:   item.URL,
+		Title: item.Name,
+		BehaviorHints: map[string]any{
+			"notWebReady": true,
+		},
 	}
-
-	return nil
 }
 
 func (i *Instance) GetEpisodeStream(episodeID string) *Stream {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	for _, episodes := range i.episodes {
-		for _, ep := range episodes {
-			if ep.ID == episodeID {
-				return &Stream{
-					URL:   ep.URL,
-					Title: ep.Title,
-					BehaviorHints: map[string]any{
-						"notWebReady": true,
-					},
-				}
-			}
-		}
+	ep, ok := i.episodeIndex[episodeID]
+	if !ok {
+		return nil
 	}
-
-	return nil
+	return &Stream{
+		URL:   ep.URL,
+		Title: ep.Title,
+		BehaviorHints: map[string]any{
+			"notWebReady": true,
+		},
+	}
 }
 
 func (i *Instance) GetMeta(itemType, itemID string) *Meta {
@@ -428,57 +412,44 @@ func (i *Instance) GetMeta(itemType, itemID string) *Meta {
 		return nil
 	}
 
-	var items []parser.MediaItem
-	switch itemType {
-	case "tv":
-		items = i.channels
-	case "movie":
-		items = i.movies
-	default:
+	item, ok := i.itemIndex[itemID]
+	if !ok {
 		return nil
 	}
-
-	for _, item := range items {
-		if item.ID == itemID {
-			return i.itemToMeta(item)
-		}
-	}
-
-	return nil
+	return i.itemToMeta(*item)
 }
 
 func (i *Instance) getSeriesMeta(seriesID string) *Meta {
-	for _, s := range i.series {
-		if s.ID == seriesID {
-			meta := &Meta{
-				ID:          s.ID,
-				Type:        string(s.Type),
-				Name:        s.Name,
-				Description: s.Plot,
-			}
-			if s.Logo != "" {
-				meta.Poster = s.Logo
-			}
-			if s.Group != "" {
-				meta.Genres = []string{s.Group}
-			}
+	s, ok := i.itemIndex[seriesID]
+	if !ok || s.Type != parser.TypeSeries {
+		return nil
+	}
+	meta := &Meta{
+		ID:          s.ID,
+		Type:        string(s.Type),
+		Name:        s.Name,
+		Description: s.Plot,
+	}
+	if s.Logo != "" {
+		meta.Poster = s.Logo
+	}
+	if s.Group != "" {
+		meta.Genres = []string{s.Group}
+	}
 
-			if episodes, ok := i.episodes[seriesID]; ok {
-				for _, ep := range episodes {
-					meta.Videos = append(meta.Videos, Video{
-						ID:        ep.ID,
-						Title:     ep.Title,
-						Season:    ep.Season,
-						Episode:   ep.Episode,
-						Thumbnail: ep.Thumbnail,
-					})
-				}
-			}
-
-			return meta
+	if episodes, ok := i.episodes[seriesID]; ok {
+		for _, ep := range episodes {
+			meta.Videos = append(meta.Videos, Video{
+				ID:        ep.ID,
+				Title:     ep.Title,
+				Season:    ep.Season,
+				Episode:   ep.Episode,
+				Thumbnail: ep.Thumbnail,
+			})
 		}
 	}
-	return nil
+
+	return meta
 }
 
 func (i *Instance) itemToMeta(item parser.MediaItem) *Meta {
@@ -552,8 +523,15 @@ func (i *Instance) LoadSeriesEpisodes(ctx context.Context, seriesID string) erro
 		return err
 	}
 
+	if episodes == nil {
+		episodes = []parser.Episode{}
+	}
+
 	i.mu.Lock()
 	i.episodes[seriesID] = episodes
+	for idx := range episodes {
+		i.episodeIndex[episodes[idx].ID] = &episodes[idx]
+	}
 	i.mu.Unlock()
 
 	return nil
@@ -611,4 +589,8 @@ func (c *InstanceCache) Get(key string) (*Instance, bool) {
 
 func (c *InstanceCache) Set(key string, instance *Instance) {
 	c.cache.Set(key, instance)
+}
+
+func (c *InstanceCache) Sweep() {
+	c.cache.Sweep()
 }

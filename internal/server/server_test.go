@@ -19,14 +19,12 @@ import (
 
 type staticProvider struct{}
 
-func (staticProvider) FetchChannels(context.Context) ([]parser.MediaItem, error) {
+func (staticProvider) FetchAll(context.Context) (channels, movies, series []parser.MediaItem, err error) {
 	return []parser.MediaItem{
 		{ID: "iptv_test", Name: "Test Channel", Type: parser.TypeTV, URL: "http://example.com/stream"},
-	}, nil
+	}, nil, nil, nil
 }
 
-func (staticProvider) FetchMovies(context.Context) ([]parser.MediaItem, error) { return nil, nil }
-func (staticProvider) FetchSeries(context.Context) ([]parser.MediaItem, error) { return nil, nil }
 func (staticProvider) FetchSeriesInfo(context.Context, string) ([]parser.Episode, error) {
 	return nil, nil
 }

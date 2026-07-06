@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/joe/open-stream-m3u/internal/parser"
@@ -14,6 +15,10 @@ type DirectProvider struct {
 	m3uURL string
 	epgURL string
 	client *http.Client
+
+	mu             sync.Mutex
+	cachedItems    []parser.MediaItem
+	cachedEpisodes map[string][]parser.Episode
 }
 
 func NewDirectProvider(m3uURL, epgURL string) *DirectProvider {
@@ -26,58 +31,56 @@ func NewDirectProvider(m3uURL, epgURL string) *DirectProvider {
 	}
 }
 
-func (p *DirectProvider) FetchChannels(ctx context.Context) ([]parser.MediaItem, error) {
+func (p *DirectProvider) FetchAll(ctx context.Context) (channels, movies, series []parser.MediaItem, err error) {
 	items, err := p.fetchAndParse(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	var channels []parser.MediaItem
-	for _, item := range items {
-		if item.Type == parser.TypeTV {
-			channels = append(channels, item)
-		}
-	}
-	return channels, nil
-}
-
-func (p *DirectProvider) FetchMovies(ctx context.Context) ([]parser.MediaItem, error) {
-	items, err := p.fetchAndParse(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var movies []parser.MediaItem
-	for _, item := range items {
-		if item.Type == parser.TypeMovie {
-			movies = append(movies, item)
-		}
-	}
-	return movies, nil
-}
-
-func (p *DirectProvider) FetchSeries(ctx context.Context) ([]parser.MediaItem, error) {
-	items, err := p.fetchAndParse(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	_, seriesMap := parser.GroupSeries(items)
-	var series []parser.MediaItem
+	var eps map[string][]parser.Episode
+	var seriesMap map[string]*parser.MediaItem
+	eps, seriesMap = parser.GroupSeries(items)
 	for _, s := range seriesMap {
 		series = append(series, *s)
 	}
-	return series, nil
+	for _, item := range items {
+		switch item.Type {
+		case parser.TypeTV:
+			channels = append(channels, item)
+		case parser.TypeMovie:
+			movies = append(movies, item)
+		}
+	}
+
+	// ponytail: struct cache valid for one refresh cycle, overwritten by next FetchAll.
+	p.mu.Lock()
+	p.cachedItems = items
+	p.cachedEpisodes = eps
+	p.mu.Unlock()
+
+	return channels, movies, series, nil
 }
 
 func (p *DirectProvider) FetchSeriesInfo(ctx context.Context, seriesID string) ([]parser.Episode, error) {
+	p.mu.Lock()
+	eps := p.cachedEpisodes
+	p.mu.Unlock()
+	if eps != nil {
+		return eps[seriesID], nil
+	}
+
+	// Cold path: cache miss (e.g. /api/groups probe path that never called FetchAll).
+	// Populate lazily so future calls are O(1).
 	items, err := p.fetchAndParse(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	episodesMap, _ := parser.GroupSeries(items)
-	return episodesMap[seriesID], nil
+	eMap, _ := parser.GroupSeries(items)
+	p.mu.Lock()
+	p.cachedItems = items
+	p.cachedEpisodes = eMap
+	p.mu.Unlock()
+	return eMap[seriesID], nil
 }
 
 func (p *DirectProvider) FetchEPG(ctx context.Context) (map[string][]parser.Programme, error) {

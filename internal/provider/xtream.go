@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/joe/open-stream-m3u/internal/parser"
@@ -20,6 +21,9 @@ type XtreamProvider struct {
 	client     *http.Client
 	catNames   map[string]string
 	catLoaded  bool
+
+	mu             sync.Mutex
+	cachedEpisodes map[string][]parser.Episode
 }
 
 func NewXtreamProvider(baseURL, username, password string, useM3U bool) *XtreamProvider {
@@ -86,29 +90,54 @@ func (p *XtreamProvider) resolveCategory(catID string) string {
 	return catID
 }
 
-func (p *XtreamProvider) FetchChannels(ctx context.Context) ([]parser.MediaItem, error) {
+func (p *XtreamProvider) FetchAll(ctx context.Context) (channels, movies, series []parser.MediaItem, err error) {
 	if p.useM3U {
-		return p.fetchChannelsFromM3U(ctx)
+		items, err := p.fetchM3U(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		eps, seriesMap := parser.GroupSeries(items)
+		for _, s := range seriesMap {
+			series = append(series, *s)
+		}
+		for _, item := range items {
+			switch item.Type {
+			case parser.TypeTV:
+				channels = append(channels, item)
+			case parser.TypeMovie:
+				movies = append(movies, item)
+			}
+		}
+		// ponytail: struct cache valid for one refresh cycle, overwritten by next FetchAll.
+		p.mu.Lock()
+		p.cachedEpisodes = eps
+		p.mu.Unlock()
+		return channels, movies, series, nil
 	}
-	return p.fetchChannelsFromAPI(ctx)
-}
 
-func (p *XtreamProvider) FetchMovies(ctx context.Context) ([]parser.MediaItem, error) {
-	if p.useM3U {
-		return p.fetchMoviesFromM3U(ctx)
+	channels, err = p.fetchChannelsFromAPI(ctx)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return p.fetchMoviesFromAPI(ctx)
-}
-
-func (p *XtreamProvider) FetchSeries(ctx context.Context) ([]parser.MediaItem, error) {
-	if p.useM3U {
-		return p.fetchSeriesFromM3U(ctx)
+	movies, err = p.fetchMoviesFromAPI(ctx)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return p.fetchSeriesFromAPI(ctx)
+	series, err = p.fetchSeriesFromAPI(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return channels, movies, series, nil
 }
 
 func (p *XtreamProvider) FetchSeriesInfo(ctx context.Context, seriesID string) ([]parser.Episode, error) {
 	if p.useM3U {
+		p.mu.Lock()
+		eps := p.cachedEpisodes
+		p.mu.Unlock()
+		if eps != nil {
+			return eps[seriesID], nil
+		}
 		return nil, nil
 	}
 
@@ -382,50 +411,6 @@ func (p *XtreamProvider) fetchSeriesFromAPI(ctx context.Context) ([]parser.Media
 	}
 
 	return result, nil
-}
-
-func (p *XtreamProvider) fetchChannelsFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
-	items, err := p.fetchM3U(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var channels []parser.MediaItem
-	for _, item := range items {
-		if item.Type == parser.TypeTV {
-			channels = append(channels, item)
-		}
-	}
-	return channels, nil
-}
-
-func (p *XtreamProvider) fetchMoviesFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
-	items, err := p.fetchM3U(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var movies []parser.MediaItem
-	for _, item := range items {
-		if item.Type == parser.TypeMovie {
-			movies = append(movies, item)
-		}
-	}
-	return movies, nil
-}
-
-func (p *XtreamProvider) fetchSeriesFromM3U(ctx context.Context) ([]parser.MediaItem, error) {
-	items, err := p.fetchM3U(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	_, seriesMap := parser.GroupSeries(items)
-	var series []parser.MediaItem
-	for _, s := range seriesMap {
-		series = append(series, *s)
-	}
-	return series, nil
 }
 
 func (p *XtreamProvider) fetchM3U(ctx context.Context) ([]parser.MediaItem, error) {

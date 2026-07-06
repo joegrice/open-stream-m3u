@@ -30,24 +30,47 @@ func New[K comparable, V any](maxSize int, ttl time.Duration) *Cache[K, V] {
 }
 
 func (c *Cache[K, V]) Get(key K) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	c.mu.RLock()
 	elem, ok := c.items[key]
 	if !ok {
+		c.mu.RUnlock()
 		var zero V
 		return zero, false
 	}
 
 	e := elem.Value.(*entry[K, V])
 	if time.Now().After(e.expiresAt) {
-		c.removeElement(elem)
+		c.mu.RUnlock()
+		// Lazy delete: upgrade to write lock and remove.
+		c.mu.Lock()
+		// Re-check: another goroutine may have evicted between unlock and lock.
+		if elem, ok := c.items[key]; ok {
+			c.removeElement(elem)
+		}
+		c.mu.Unlock()
 		var zero V
 		return zero, false
 	}
 
-	c.order.MoveToFront(elem)
-	return e.value, true
+	val := e.value
+	c.mu.RUnlock()
+	// ponytail: skip MoveToFront on reads; LRU is write-order, not access-order.
+	// Revisit if eviction churn shows under load.
+	return val, true
+}
+
+// Sweep evicts all expired entries. Safe to call from a background goroutine.
+func (c *Cache[K, V]) Sweep() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for elem := c.order.Front(); elem != nil; {
+		next := elem.Next()
+		e := elem.Value.(*entry[K, V])
+		if time.Now().After(e.expiresAt) {
+			c.removeElement(elem)
+		}
+		elem = next
+	}
 }
 
 func (c *Cache[K, V]) Set(key K, value V) {

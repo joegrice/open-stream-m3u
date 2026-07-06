@@ -38,6 +38,23 @@ func New(cfg *config.Config, logger *slog.Logger, webFS fs.FS) *Server {
 		webFS:  webFS,
 	}
 	s.setupRoutes()
+
+	// Background sweep: evict expired instance cache entries without a re-touch.
+	// ponytail: fixed TTL/2 cadence; tighten if quiet tokens linger in memory.
+	if cfg.CacheTTL > 0 {
+		go func() {
+			interval := cfg.CacheTTL / 2
+			if interval < time.Minute {
+				interval = time.Minute
+			}
+			t := time.NewTicker(interval)
+			defer t.Stop()
+			for range t.C {
+				s.cache.Sweep()
+			}
+		}()
+	}
+
 	return s
 }
 
@@ -155,15 +172,17 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 
 	enabledTypes := addon.EnabledTypesFromConfig(cfg)
 
-	var channels, movies, series []parser.MediaItem
-	if enabledTypes["tv"] {
-		channels, _ = prov.FetchChannels(ctx)
+	channels, movies, series, _ := prov.FetchAll(ctx)
+	// ponytail: handleGroups ignores fetch errors intentionally to return
+	// partial group lists — keep that behavior with the single FetchAll call.
+	if !enabledTypes["tv"] {
+		channels = nil
 	}
-	if enabledTypes["movie"] {
-		movies, _ = prov.FetchMovies(ctx)
+	if !enabledTypes["movie"] {
+		movies = nil
 	}
-	if enabledTypes["series"] {
-		series, _ = prov.FetchSeries(ctx)
+	if !enabledTypes["series"] {
+		series = nil
 	}
 
 	all := make([]parser.MediaItem, 0, len(channels)+len(movies)+len(series))
