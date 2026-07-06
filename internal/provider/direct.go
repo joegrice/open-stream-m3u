@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -124,10 +123,5 @@ func (p *DirectProvider) fetchAndParse(ctx context.Context) ([]parser.MediaItem,
 		return nil, fmt.Errorf("M3U fetch failed: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return parser.ParseM3U(string(body))
+	return parser.ParseM3U(resp.Body)
 }

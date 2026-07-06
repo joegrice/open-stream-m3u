@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"bufio"
 	"crypto/md5"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,13 +53,20 @@ var (
 	reYear        = regexp.MustCompile(`\((\d{4})\)`)
 )
 
-func ParseM3U(content string) ([]MediaItem, error) {
-	lines := strings.Split(content, "\n")
+// ParseM3U streams an M3U playlist from r line by line. Peak memory is
+// O(largest line) rather than O(whole file) — the body bytes never
+// materialize as a single buffer. M3U lines with many attributes can exceed
+// the default 64KB scanner buffer, so we raise the cap to 1MB per line.
+func ParseM3U(r io.Reader) ([]MediaItem, error) {
+	scanner := bufio.NewScanner(r)
+	// ponytail: 1MB per line covers pathological #EXTINF lines with dozens of attrs.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
 	var items []MediaItem
 	var currentItem *MediaItem
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
@@ -98,6 +107,10 @@ func ParseM3U(content string) ([]MediaItem, error) {
 			items = append(items, *currentItem)
 			currentItem = nil
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return items, nil

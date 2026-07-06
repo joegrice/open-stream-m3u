@@ -426,10 +426,5 @@ func (p *XtreamProvider) fetchM3U(ctx context.Context) ([]parser.MediaItem, erro
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return parser.ParseM3U(string(body))
+	return parser.ParseM3U(resp.Body)
 }
