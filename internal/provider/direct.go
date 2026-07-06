@@ -104,12 +104,7 @@ func (p *DirectProvider) FetchEPG(ctx context.Context) (map[string][]parser.Prog
 		return nil, fmt.Errorf("EPG fetch failed: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return parser.ParseXMLTV(string(body))
+	return parser.ParseXMLTV(resp.Body)
 }
 
 func (p *DirectProvider) fetchAndParse(ctx context.Context) ([]parser.MediaItem, error) {

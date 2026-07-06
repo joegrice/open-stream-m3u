@@ -218,12 +218,7 @@ func (p *XtreamProvider) FetchEPG(ctx context.Context) (map[string][]parser.Prog
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return parser.ParseXMLTV(string(body))
+	return parser.ParseXMLTV(resp.Body)
 }
 
 func (p *XtreamProvider) fetchChannelsFromAPI(ctx context.Context) ([]parser.MediaItem, error) {

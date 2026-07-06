@@ -2,6 +2,7 @@ package parser
 
 import (
 	"encoding/xml"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -16,15 +17,10 @@ type Programme struct {
 	DescLower   string
 }
 
-type xmltvTV struct {
-	XMLName    xml.Name       `xml:"tv"`
-	Programmes []xmltvProgramme `xml:"programme"`
-}
-
 type xmltvProgramme struct {
-	Channel string `xml:"channel,attr"`
-	Start   string `xml:"start,attr"`
-	Stop    string `xml:"stop,attr"`
+	Channel string      `xml:"channel,attr"`
+	Start   string      `xml:"start,attr"`
+	Stop    string      `xml:"stop,attr"`
 	Title   []xmltvText `xml:"title"`
 	Desc    []xmltvText `xml:"desc"`
 }
@@ -34,40 +30,60 @@ type xmltvText struct {
 	Value string `xml:",chardata"`
 }
 
-func ParseXMLTV(content string) (map[string][]Programme, error) {
-	var tv xmltvTV
-	if err := xml.Unmarshal([]byte(content), &tv); err != nil {
-		return nil, err
-	}
-
+// ParseXMLTV streams an XMLTV document from r and returns a map of channel
+// ID -> sorted programmes. It decodes one <programme> at a time, so peak
+// memory is O(largest programme element) rather than O(whole document) —
+// the body bytes never materialize as a single buffer.
+//
+// Malformed individual programmes are skipped, not fatal: a single bad element
+// no longer discards the whole EPG.
+func ParseXMLTV(r io.Reader) (map[string][]Programme, error) {
+	dec := xml.NewDecoder(r)
 	epgData := make(map[string][]Programme)
-	for _, prog := range tv.Programmes {
-		start := parseXMLTVTime(prog.Start)
-		stop := parseXMLTVTime(prog.Stop)
 
-		title := ""
-		if len(prog.Title) > 0 {
-			title = strings.TrimSpace(prog.Title[0].Value)
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
 		}
 
+		se, ok := tok.(xml.StartElement)
+		if !ok || se.Name.Local != "programme" {
+			continue
+		}
+
+		var xp xmltvProgramme
+		if err := dec.DecodeElement(&xp, &se); err != nil {
+			// ponytail: skip malformed programme, keep the rest of the document.
+			continue
+		}
+
+		title := ""
+		if len(xp.Title) > 0 {
+			title = strings.TrimSpace(xp.Title[0].Value)
+		}
 		desc := ""
-		if len(prog.Desc) > 0 {
-			desc = strings.TrimSpace(prog.Desc[0].Value)
+		if len(xp.Desc) > 0 {
+			desc = strings.TrimSpace(xp.Desc[0].Value)
 		}
 
 		p := Programme{
-			Start:       start,
-			Stop:        stop,
+			Start:       parseXMLTVTime(xp.Start),
+			Stop:        parseXMLTVTime(xp.Stop),
 			Title:       title,
 			TitleLower:  strings.ToLower(title),
 			Description: desc,
 			DescLower:   strings.ToLower(desc),
 		}
 
-		epgData[prog.Channel] = append(epgData[prog.Channel], p)
+		epgData[xp.Channel] = append(epgData[xp.Channel], p)
 	}
 
-	// Sort each channel's programmes by Start so GetCurrentProgramme can binary-search.
+	// Sort each channel's programmes by Start so GetCurrentProgramme can
+	// binary-search (see GetCurrentProgramme).
 	for _, progs := range epgData {
 		sort.Slice(progs, func(i, j int) bool {
 			return progs[i].Start.Before(progs[j].Start)
