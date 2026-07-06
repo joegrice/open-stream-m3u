@@ -350,13 +350,6 @@ func (p *XtreamProvider) fetchMoviesFromAPI(ctx context.Context) ([]parser.Media
 	return movies, nil
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (p *XtreamProvider) fetchSeriesFromAPI(ctx context.Context) ([]parser.MediaItem, error) {
 	p.loadCategories(ctx)
 
